@@ -226,21 +226,6 @@ rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parol
 rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
 rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
 
-mkdir -p ~/.config
-if [[ -f ~/.config/kwalletrc ]]; then
-    if grep -q "^\[Wallet\]" ~/.config/kwalletrc; then
-        WALLET_SECTION="$(awk '/^\[Wallet\]/{f=1;next} /^\[/{f=0} f' ~/.config/kwalletrc)"
-        sed -i '/^\[Wallet\]/,/^\[/{s/^Enabled=.*/Enabled=false/}' ~/.config/kwalletrc
-        if ! echo "$WALLET_SECTION" | grep -q "^Enabled="; then
-            sed -i '/^\[Wallet\]/a Enabled=false' ~/.config/kwalletrc
-        fi
-    else
-        printf '[Wallet]\nEnabled=false\n' >> ~/.config/kwalletrc
-    fi
-else
-    printf '[Wallet]\nEnabled=false\n' > ~/.config/kwalletrc
-fi
-
 show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
 
 sudo sed -i 's/^#[[:space:]]*Color/Color/' /etc/pacman.conf
