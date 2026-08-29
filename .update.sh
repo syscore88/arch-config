@@ -1,15 +1,11 @@
 #!/bin/bash
 
-# Kolory dla lepszej czytelności / Colors for better readability
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# =========================================================
-# WYKRYWANIE JĘZYKA SYSTEMU / SYSTEM LANGUAGE DETECTION
-# =========================================================
 DETECTED_LOCALE="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
 if [ -z "$DETECTED_LOCALE" ] && command -v locale &> /dev/null; then
     DETECTED_LOCALE=$(locale 2>/dev/null | grep -m1 '^LANG=' | cut -d= -f2)
@@ -21,9 +17,6 @@ else
     IS_PL=false
 fi
 
-# =========================================================
-# KOMUNIKATY / MESSAGES
-# =========================================================
 if [ "$IS_PL" = true ]; then
     MSG_TITLE="       KOMPLEKSOWY SKRYPT AKTUALIZACJI I CZYSZCZENIA  "
     MSG_ASK_PASS="Proszę podać hasło administratora (sudo) na potrzeby czyszczenia systemu:"
@@ -110,11 +103,9 @@ echo -e "${BLUE}======================================================${NC}"
 echo -e "${BLUE}${MSG_TITLE}${NC}"
 echo -e "${BLUE}======================================================${NC}"
 
-# 1. ZAPYTANIE O HASŁO TYLKO RAZ NA POCZĄTKU / ASK FOR PASSWORD ONCE AT THE START
 echo -e "${YELLOW}${MSG_ASK_PASS}${NC}"
 sudo -v
 
-# Utrzymanie aktywnej sesji sudo w tle, dopóki skrypt działa
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 SUDO_KEEP_ALIVE_PID=$!
 
@@ -124,13 +115,11 @@ sudo pacman -Sy archlinux-keyring --noconfirm
 echo -e "\n${GREEN}${MSG_FULL_UPDATE}${NC}"
 yay -Syu --noconfirm
 
-# AKTUALIZACJA FLATPAK / FLATPAK UPDATE
 if command -v flatpak &> /dev/null; then
     echo -e "\n${GREEN}${MSG_FLATPAK_UPDATE}${NC}"
     flatpak update -y
 fi
 
-# AKTUALIZACJA FIRMWARE / FIRMWARE UPDATE
 FWUPD_RESTART_NEEDED=false
 if command -v fwupdmgr &> /dev/null; then
     echo -e "\n${GREEN}${MSG_FWUPD_REFRESH}${NC}"
@@ -167,7 +156,6 @@ echo -e "${GREEN}${MSG_CLEAN_PACMAN_CACHE}${NC}"
 sudo rm -rf /var/cache/pacman/pkg/download-* 2>/dev/null
 sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null
 
-# BEZPIECZNE CZYSZCZENIE FLATPAK (SYSTEM) / SAFE FLATPAK CLEANUP (SYSTEM)
 if command -v flatpak &> /dev/null; then
     echo -e "${GREEN}${MSG_FLATPAK_CLEAN_SYS}${NC}"
     sudo flatpak uninstall --unused --system --delete-data -y
@@ -208,7 +196,6 @@ echo -e "${GREEN}${MSG_CLEAN_YAY}${NC}"
 yay -Scc --noconfirm
 rm -rf ~/.cache/yay/* 2>/dev/null
 
-# BEZPIECZNE CZYSZCZENIE FLATPAK (USER) / SAFE FLATPAK CLEANUP (USER)
 if command -v flatpak &> /dev/null; then
     echo -e "${GREEN}${MSG_FLATPAK_CLEAN_USER}${NC}"
     flatpak uninstall --unused --user --delete-data -y
@@ -279,7 +266,6 @@ else
     fi
 fi
 
-# Zatrzymanie procesu podtrzymującego sudo w tle / Stop the background sudo keep-alive process
 kill $SUDO_KEEP_ALIVE_PID 2>/dev/null
 
 echo -e "\n${GREEN}======================================================${NC}"
