@@ -321,7 +321,6 @@ show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
 sudo flatpak update --appstream || true
 sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
-sudo flatpak install -y flathub it.mijorus.gearlever || true
 
 show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 
