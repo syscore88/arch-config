@@ -219,8 +219,6 @@ for pkg in $INSTALLED_PACKAGES; do
     sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
 done
 
-rm -rf ~/.local/share/akonadi ~/.local/share/kmail2 ~/.local/share/local-mail ~/.local/share/contacts ~/.local/share/korganizer ~/.local/share/akregator ~/.local/share/kontact
-
 if pacman -Qq plasma-desktop &>/dev/null || pacman -Qq plasma-workspace &>/dev/null; then
     mkdir -p ~/.config
     cat > ~/.config/kwalletrc << 'EOF'
