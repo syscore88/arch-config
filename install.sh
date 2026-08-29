@@ -277,7 +277,7 @@ SYSTEM_PKGS=(
     discord telegram-desktop qbittorrent firefox-developer-edition firefox-developer-edition-i18n-pl
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl
     wine-staging winetricks gamemode gamescope mangohud goverlay vkd3d
-    vulkan-dzn vulkan-gfxstream vulkan-swrast
+    vulkan-dzn vulkan-gfxstream vulkan-swrast resources
     virt-manager qemu-desktop libvirt edk2-ovmf
     lib32-mpg123 lib32-libvdpau lib32-libtheora lib32-speex
     lib32-libxrandr lib32-libxrender lib32-gamemode
