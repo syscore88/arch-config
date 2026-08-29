@@ -213,7 +213,6 @@ find ~/.cache -type f -atime +14 \
     ! -path "*/BraveSoftware/*" \
     ! -path "*/opera/*" \
     ! -path "*/vivaldi/*" \
-    ! -path "*/thorium/*" \
     -exec rm -f {} + 2>/dev/null
 
 echo -e "${GREEN}${MSG_CLEAN_THUMBS}${NC}"
