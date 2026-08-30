@@ -348,7 +348,7 @@ fi
 
 yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false || true
 
-AUR_PKGS=(ventoy-bin lsfg-vk-bin google-chrome brave-origin-bin faugus-launcher shelly-flatpak-backend-bin dmemcg-booster needrestart makeself)
+AUR_PKGS=(ventoy-bin lsfg-vk-bin google-chrome brave-origin-bin faugus-launcher-bin shelly-flatpak-backend-bin dmemcg-booster needrestart makeself)
 install_yay_pkgs "${AUR_PKGS[@]}"
 
 show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
