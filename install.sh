@@ -719,6 +719,12 @@ if command -v zsh &>/dev/null; then
         sed -i 's/^plugins=(.*/plugins=(git sudo systemd archlinux)/' ~/.zshrc
 
         SHELL_LOCALE="${LANG:-${LC_ALL:-${LC_MESSAGES:-en_US.UTF-8}}}"
+        if command -v locale &>/dev/null; then
+            AVAILABLE_LOCALES="$(locale -a 2>/dev/null)"
+            if ! echo "$AVAILABLE_LOCALES" | grep -qiF "$SHELL_LOCALE" && ! echo "$AVAILABLE_LOCALES" | grep -qiF "$(echo "$SHELL_LOCALE" | sed 's/UTF-8/utf8/')"; then
+                SHELL_LOCALE="en_US.UTF-8"
+            fi
+        fi
         if ! grep -q "^export LC_ALL=" ~/.zshrc; then
             {
                 echo ""
