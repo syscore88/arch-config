@@ -33,7 +33,7 @@
   "SearchShowDetailPane": false,
   "TrayEnabled": false,
   "TrayAutoStart": false,
-  "TrayCheckIntervalHours": 72,
+  "TrayCheckIntervalHours": 48,
   "UseSymbolicTray": true,
   "TrayIconPath": "",
   "TrayUpdatesIconPath": "",
