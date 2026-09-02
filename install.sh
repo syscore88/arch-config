@@ -300,7 +300,7 @@ SYSTEM_PKGS=(
     gwenview okular ark
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 cdemu-client cdemu-daemon vhba-module
-    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
+    plymouth profile-sync-daemon ananicy-cpp dconf dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake
@@ -717,6 +717,15 @@ fi
 
 sudo virsh net-start default 2>/dev/null || true
 sudo virsh net-autostart default || true
+
+VIRT_MANAGER_DCONF="$SCRIPT_DIR/virt-manager.dconf"
+if [ -f "$VIRT_MANAGER_DCONF" ] && command -v dconf &>/dev/null; then
+    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        dconf load /org/virt-manager/virt-manager/ < "$VIRT_MANAGER_DCONF" || true
+    else
+        dbus-run-session -- dconf load /org/virt-manager/virt-manager/ < "$VIRT_MANAGER_DCONF" || true
+    fi
+fi
 
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStartSec=.*/DefaultTimeoutStartSec=3s/' /etc/systemd/system.conf
