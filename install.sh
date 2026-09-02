@@ -803,7 +803,7 @@ case "$RESTART_CHOICE" in
     [Yy]*)
         systemctl reboot
         ;;
-    *)
+    *) 
         exit 0
         ;;
 esac
