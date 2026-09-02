@@ -718,14 +718,51 @@ fi
 sudo virsh net-start default 2>/dev/null || true
 sudo virsh net-autostart default || true
 
-VIRT_MANAGER_DCONF="$SCRIPT_DIR/virt-manager.dconf"
-if [ -f "$VIRT_MANAGER_DCONF" ] && command -v dconf &>/dev/null; then
-    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-        dconf load /org/virt-manager/virt-manager/ < "$VIRT_MANAGER_DCONF" || true
-    else
-        dbus-run-session -- dconf load /org/virt-manager/virt-manager/ < "$VIRT_MANAGER_DCONF" || true
-    fi
-fi
+dconf load /org/virt-manager/virt-manager/ <<'EOF'
+[/]
+manager-window-height=297
+manager-window-width=478
+xmleditor-enabled=true
+
+[confirm]
+delete-storage=false
+forcepoweroff=false
+
+[connections]
+autoconnect=['qemu:///system']
+uris=['qemu:///system']
+
+[conns/qemu:system]
+window-size=(800, 600)
+
+[details]
+show-toolbar=true
+
+[new-vm]
+cpu-default='host-passthrough'
+firmware='uefi'
+graphics-type='spice'
+storage-format='raw'
+
+[paths]
+media-default='/home/bartek/Pobrane'
+
+[stats]
+enable-disk-poll=true
+enable-memory-poll=true
+enable-net-poll=true
+
+[urls]
+isos=['/var/lib/libvirt/images/archlinux.img', '/home/bartek/Pobrane/archlinux-2026.09.01-x86_64.iso']
+
+[vmlist-fields]
+disk-usage=false
+network-traffic=false
+
+[vms/2a91721fef6c4249997ea19b01801825]
+autoconnect=1
+vm-window-size=(1280, 842)
+EOF
 
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStartSec=.*/DefaultTimeoutStartSec=3s/' /etc/systemd/system.conf
