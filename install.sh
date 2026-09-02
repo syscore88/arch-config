@@ -303,9 +303,9 @@ SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
     gcc make cmake meson ninja just
     python-pip python-tqdm python-defusedxml python-packaging
-    gwenview okular ark
+    gwenview okular ark firefox firefox-i18n-pl cdemu-client cdemu-daemon vhba-module
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
-    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 cdemu-client cdemu-daemon vhba-module
+    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 
     plymouth profile-sync-daemon ananicy-cpp dconf dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
@@ -313,7 +313,7 @@ SYSTEM_PKGS=(
     krita krita-plugin-gmic gimp gmic kate
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
-    discord telegram-desktop qbittorrent firefox-developer-edition firefox-developer-edition-i18n-pl
+    discord telegram-desktop qbittorrent 
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl
     wine-staging winetricks gamemode gamescope mangohud goverlay vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast resources
