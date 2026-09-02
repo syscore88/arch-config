@@ -303,14 +303,14 @@ SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
     gcc make cmake meson ninja just
     python-pip python-tqdm python-defusedxml python-packaging
-    gwenview okular ark firefox firefox-i18n-pl cdemu-client cdemu-daemon vhba-module
+    gwenview okular ark firefox firefox-i18n-pl 
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 
     plymouth profile-sync-daemon ananicy-cpp dconf dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake
-    krita krita-plugin-gmic gimp gmic kate
+    krita krita-plugin-gmic gimp gmic kate cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
     discord telegram-desktop qbittorrent 
@@ -750,16 +750,10 @@ firmware='uefi'
 graphics-type='spice'
 storage-format='raw'
 
-[paths]
-media-default='/home/bartek/Pobrane'
-
 [stats]
 enable-disk-poll=true
 enable-memory-poll=true
 enable-net-poll=true
-
-[urls]
-isos=['/var/lib/libvirt/images/archlinux.img', '/home/bartek/Pobrane/archlinux-2026.09.01-x86_64.iso']
 
 [vmlist-fields]
 disk-usage=false
