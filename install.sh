@@ -180,6 +180,8 @@ retry_cmd() {
     done
 }
 
+install_pacman_pkgs dconf
+
 GPU_TYPE="unknown"
 HYBRID_GPU=false
 GPU_VENDORS=()
@@ -306,7 +308,7 @@ SYSTEM_PKGS=(
     gwenview okular ark firefox firefox-i18n-pl 
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 
-    plymouth profile-sync-daemon ananicy-cpp dconf dconf-editor geoclue fwupd fwupd-efi
+    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake
