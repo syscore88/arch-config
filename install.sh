@@ -771,11 +771,6 @@ sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStartSec=.*/DefaultTimeoutStartSec=
 sudo systemctl disable NetworkManager-wait-online.service || true
 sudo journalctl --vacuum-time=2d || true
 
-if [ -d "$SCRIPT_DIR/bleachbit" ]; then
-    sudo mkdir -p /root/.config/bleachbit
-    sudo cp -af "$SCRIPT_DIR/bleachbit/." /root/.config/bleachbit/
-fi
-
 for grp in libvirt kvm; do
     getent group "$grp" &>/dev/null && sudo usermod -aG "$grp" "$CURRENT_USER" || true
 done
