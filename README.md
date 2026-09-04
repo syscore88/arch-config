@@ -75,6 +75,14 @@ Sets up Zsh + Oh My Zsh + Powerlevel10k (if `zsh` is present), removes the tempo
    
 ---
 
+### ☕ Support the Project
+
+If you find this tool helpful and it saved you some time, consider buying me a coffee to support further development! 
+
+[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/bartekszczecinski)
+
+---
+
 ## ⚠️ Requirements & Notes
 
 - A base **Arch Linux** installation with `pacman` and an internet connection (packages are installed from official repos, Flathub, and the AUR).
