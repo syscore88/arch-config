@@ -47,7 +47,7 @@ Sets up Zsh + Oh My Zsh + Powerlevel10k (if `zsh` is present), removes the tempo
 
 ---
 
-## 🛠️ How to Use
+🚀 How to Run
 
 1. Clone the repository to your disk
    ```bash
