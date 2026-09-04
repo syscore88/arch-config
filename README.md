@@ -83,6 +83,10 @@ If you find this tool helpful and it saved you some time, consider buying me a c
 
 ---
 
+If you find this project useful, leave a star! ⭐
+
+---
+
 ## ⚠️ Requirements & Notes
 
 - A base **Arch Linux** installation with `pacman` and an internet connection (packages are installed from official repos, Flathub, and the AUR).
