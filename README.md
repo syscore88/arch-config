@@ -64,10 +64,12 @@ Sets up Zsh + Oh My Zsh + Powerlevel10k (if `zsh` is present), removes the tempo
    chmod +x install.sh
    ```
 
-4. Run the script (without `sudo`!)
-   ```bash
-   ./install.sh
-   ```
+4. Run the script
+> ⚠️ **IMPORTANT:** Run the script as a **regular user** (NOT as root/sudo). The script will ask for the administrator password at the start to configure temporary elevated privileges.
+
+```bash
+./install.sh
+```
 
 5. Running inside a chroot
    ```bash
