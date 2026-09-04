@@ -258,8 +258,8 @@ fi
 rm -rf ~/.config/akonadi* ~/.config/kmail* ~/.config/kontact* ~/.config/korganizer* ~/.config/kaddressbook* ~/.config/akregator* ~/.config/emailidentities ~/.config/mailtransports
 rm -rf ~/.cache/akonadi* ~/.cache/kmail* ~/.cache/kontact* ~/.cache/korganizer* ~/.cache/kaddressbook* ~/.cache/akregator* ~/.cache/konqueror*
 rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
-rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
-rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
+rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution,dragonplayer,elisa}
+rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution,dragonplayer,elisa}
 
 show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
 
