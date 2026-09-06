@@ -138,13 +138,15 @@ show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_UPDATE"
 sudo env LC_ALL=C pacman -Sy archlinux-keyring --noconfirm
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_UPDATE"
 
+# Snapshot pending version changes (old -> new) while the sync db is fresh,
+# before the actual upgrade removes the "pending update" state.
+PKG_VERSIONS=$(env LC_ALL=C yay -Qu 2>/dev/null | sort -u)
+
 YAY_OUTPUT=$(env LC_ALL=C yay -Syu --noconfirm 2>&1)
 echo "$YAY_OUTPUT"
 
-PKG_LINE=$(echo "$YAY_OUTPUT" | grep -m1 -E '^Packages? \([0-9]+\)')
-if [ -n "$PKG_LINE" ]; then
-    PKG_LIST=$(echo "$PKG_LINE" | sed -E 's/^Packages? \([0-9]+\) //' | tr ' ' '\n' | sed '/^$/d' | sort -u)
-    print_pkg_list "$MSG_PKGS_UPDATED" "$PKG_LIST"
+if [ -n "$PKG_VERSIONS" ]; then
+    print_pkg_list "$MSG_PKGS_UPDATED" "$PKG_VERSIONS"
 else
     printf "\r\033[K" >&3
     echo -e "${INFO}${MSG_PKGS_NONE}${NC}" >&3
