@@ -135,15 +135,15 @@ show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_UPDATE"
 # ---------------------------------------------------------------
 # PHASE: UPDATE
 # ---------------------------------------------------------------
-sudo pacman -Sy archlinux-keyring --noconfirm
+sudo env LC_ALL=C pacman -Sy archlinux-keyring --noconfirm
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_UPDATE"
 
-YAY_OUTPUT=$(yay -Syu --noconfirm 2>&1)
+YAY_OUTPUT=$(env LC_ALL=C yay -Syu --noconfirm 2>&1)
 echo "$YAY_OUTPUT"
 
 PKG_LINE=$(echo "$YAY_OUTPUT" | grep -m1 -E '^Packages? \([0-9]+\)')
 if [ -n "$PKG_LINE" ]; then
-    PKG_LIST=$(echo "$PKG_LINE" | sed -E 's/^Packages? \([0-9]+\) //' | tr ' ' '\n' | sed '/^$/d')
+    PKG_LIST=$(echo "$PKG_LINE" | sed -E 's/^Packages? \([0-9]+\) //' | tr ' ' '\n' | sed '/^$/d' | sort -u)
     print_pkg_list "$MSG_PKGS_UPDATED" "$PKG_LIST"
 else
     printf "\r\033[K" >&3
@@ -190,7 +190,7 @@ STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 
 ORPHANS=$(pacman -Qtdq 2>/dev/null)
 if [ -n "$ORPHANS" ]; then
-    sudo pacman -Rns $ORPHANS --noconfirm
+    sudo env LC_ALL=C pacman -Rns $ORPHANS --noconfirm
 fi
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 
@@ -228,7 +228,7 @@ STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_USER"
 # ---------------------------------------------------------------
 # PHASE: USER CLEANUP (NO SUDO)
 # ---------------------------------------------------------------
-yay -Scc --noconfirm
+env LC_ALL=C yay -Scc --noconfirm
 rm -rf ~/.cache/yay/* 2>/dev/null
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_USER"
 
