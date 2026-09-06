@@ -155,10 +155,17 @@ fi
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_UPDATE"
 
 if command -v flatpak &> /dev/null; then
+    FLATPAK_BEFORE=$(flatpak list --app --columns=application,version 2>/dev/null)
+
     FLATPAK_OUTPUT=$(flatpak update -y 2>&1)
     echo "$FLATPAK_OUTPUT"
 
-    FLATPAK_PKGS=$(echo "$FLATPAK_OUTPUT" | grep -E '\[Update\]' | awk '{print $3}')
+    FLATPAK_AFTER=$(flatpak list --app --columns=application,version 2>/dev/null)
+
+    FLATPAK_PKGS=$(join -t$'\t' -j1 \
+        <(echo "$FLATPAK_BEFORE" | sort -t$'\t' -k1,1) \
+        <(echo "$FLATPAK_AFTER" | sort -t$'\t' -k1,1) 2>/dev/null \
+        | awk -F'\t' '$2 != $3 { printf "%s: %s → %s\n", $1, ($2==""?"?":$2), ($3==""?"?":$3) }')
     print_pkg_list "$MSG_FLATPAK_UPDATED" "$FLATPAK_PKGS"
 fi
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_UPDATE"
