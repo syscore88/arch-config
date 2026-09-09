@@ -310,7 +310,7 @@ SYSTEM_PKGS=(
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
-    vlc vlc-plugins-all libappimage handbrake
+    vlc vlc-plugins-all libappimage handbrake xorg-xhost
     krita krita-plugin-gmic gimp gmic kate cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
