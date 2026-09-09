@@ -1,0 +1,14 @@
+cat << 'EOF' > bleachbit-root.desktop
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=BleachBit (SUDO)
+GenericName=Program czyszczący niepotrzebne pliki (Root)
+Comment=Zwolnij miejsce na dysku jako root
+Icon=bleachbit
+Exec=sh -c "xhost +si:localuser:root && sudo GDK_BACKEND=x11 DISPLAY=$DISPLAY bleachbit"
+TryExec=bleachbit
+Terminal=true
+Categories=System;
+StartupNotify=true
+EOF
