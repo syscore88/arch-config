@@ -1,10 +1,11 @@
 #!/bin/bash
-# =====================================
-#  SKRYPT INSTALACYJNY - Arch Linux
-# =====================================
+# ==========================================================
+# KOMPLEKSOWY SKRYPT KONFIGURACYJNY SYSTEMU (DEBIAN 13)
+# ==========================================================
 
 set -euo pipefail
-export PATH="/usr/sbin:/sbin:$PATH"
+export DEBIAN_FRONTEND=noninteractive
+export PATH="/usr/sbin:/sbin:$PATH" 
 
 detect_system_lang() {
     local sys_lang="${LANG:-}"
@@ -36,9 +37,9 @@ cleanup_on_exit() {
         echo -e "\n" >&3
         cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true
         if [[ "$SCRIPT_LANG" == "pl" ]]; then
-            echo -e "${ERR}✘ Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}" >&3
+            echo -e "${ERR}✖ Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}" >&3
         else
-            echo -e "${ERR}✘ An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}" >&3
+            echo -e "${ERR}✖ An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}" >&3
         fi
     fi
     rm -f "$TMP_LOG"
@@ -90,23 +91,23 @@ show_progress() {
 
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
     MSG_PHASE_1="[1/3] Konfiguracja i optymalizacja systemu..."
-    MSG_PHASE_2="[2/3] Instalacja pakietów systemowych, Flatpak i AUR..."
+    MSG_PHASE_2="[2/3] Instalacja pakietów systemowych, Flathub i paczek .deb..."
     MSG_PHASE_3="[3/3] Konfiguracja usług, bootloadera i środowiska..."
 else
     MSG_PHASE_1="[1/3] System configuration and optimization..."
-    MSG_PHASE_2="[2/3] Installing system, Flatpak, and AUR packages..."
+    MSG_PHASE_2="[2/3] Installing system, Flathub, and .deb packages..."
     MSG_PHASE_3="[3/3] Configuring services, bootloader, and environment..."
 fi
 
 TOTAL_STEPS=12
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+CURRENT_USER=$(whoami)
+DEB_DIR="/tmp/debs_$$"
 
 if [[ "$EUID" -eq 0 ]]; then
-    echo -e "${ERR}✘ Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3
+    echo -e "${ERR}✖ Nie uruchamiaj skryptu jako root. Użyj zwykłego użytkownika z sudo.${NC}" >&3
     exit 1
 fi
-
-CURRENT_USER=$(whoami)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 printf '\033[?7h\n' >&3
 
@@ -129,7 +130,7 @@ else
         sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
     else
         rm -f "$SUDOERS_TMP"
-        echo -e "${ERR}✘ Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
+        echo -e "${ERR}✖ Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
         exit 1
     fi
     rm -f "$SUDOERS_TMP"
@@ -137,105 +138,112 @@ fi
 
 printf '\033[?7l' >&3
 
-# =============================================================
+wait_for_apt() {
+    sudo systemctl stop packagekit 2>/dev/null || true
+    while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+          sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+          sudo killall -0 apt apt-get dpkg 2>/dev/null; do
+        sleep 3
+    done
+}
+
+# ==========================================================
 #  ETAP 1/3: KONFIGURACJA I OPTYMALIZACJA SYSTEMU
-# =============================================================
+# ==========================================================
 show_progress 0 $TOTAL_STEPS "$MSG_PHASE_1"
 
-install_pacman_pkgs() {
-    local valid_pkgs=()
-    for pkg in "$@"; do
-        if pacman -Si "$pkg" &>/dev/null; then
-            valid_pkgs+=("$pkg")
-        fi
-    done
-    for pkg in "${valid_pkgs[@]}"; do
-        sudo pacman -S --noconfirm --needed "$pkg" || true
-    done
-}
-
-install_yay_pkgs() {
-    local valid_pkgs=()
-    for pkg in "$@"; do
-        if yay -Si "$pkg" &>/dev/null; then
-            valid_pkgs+=("$pkg")
-        fi
-    done
-    for pkg in "${valid_pkgs[@]}"; do
-        yay -S --noconfirm --needed "$pkg" || true
-    done
-}
-
-retry_cmd() {
-    local attempts="$1"; shift
-    local delay=3
-    local n=1
-    until "$@"; do
-        if (( n >= attempts )); then
-            return 1
-        fi
-        sleep "$delay"
-        delay=$(( delay * 2 ))
-        n=$(( n + 1 ))
-    done
-}
-
-install_pacman_pkgs dconf
-
-GPU_TYPE="unknown"
-HYBRID_GPU=false
-GPU_VENDORS=()
-if command -v lspci &>/dev/null; then
-    GPU_INFO=$(lspci | grep -i -E "vga|3d" || true)
-
-    echo "$GPU_INFO" | grep -qi "nvidia"      && GPU_VENDORS+=("nvidia")
-    echo "$GPU_INFO" | grep -qi -E "amd|ati"  && GPU_VENDORS+=("amd")
-    echo "$GPU_INFO" | grep -qi "intel"       && GPU_VENDORS+=("intel")
-
-    TOTAL_KNOWN=${#GPU_VENDORS[@]}
-
-    if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
-        HYBRID_GPU=false
-        for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
-            sudo pacman -S --needed --noconfirm "$pkg" || true
-        done
-    elif [ "$TOTAL_KNOWN" -ge 2 ]; then
-        HYBRID_GPU=true
-        GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
-    else
-        HYBRID_GPU=false
-        GPU_TYPE="${GPU_VENDORS[0]}"
-    fi
-else
-    for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
-        sudo pacman -S --needed --noconfirm "$pkg" || true
-    done
-fi
-
-if [ -f "$SCRIPT_DIR/.update.sh" ]; then
+if [[ -f "$SCRIPT_DIR/.update.sh" ]]; then
     cp -af "$SCRIPT_DIR/.update.sh" ~/.update.sh
     chmod +x ~/.update.sh
 fi
 
-if [ -d "$SCRIPT_DIR/.local" ]; then
+if [[ -d "$SCRIPT_DIR/.local" ]]; then
     mkdir -p ~/.local
     cp -afT "$SCRIPT_DIR/.local" ~/.local
 fi
 
-if [ -d "$SCRIPT_DIR/.config" ]; then
+if [[ -d "$SCRIPT_DIR/.config" ]]; then
     mkdir -p ~/.config
     cp -afT "$SCRIPT_DIR/.config" ~/.config
 fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp xarchiver krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager"
-INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
-for pkg in $INSTALLED_PACKAGES; do
-    sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
-done
+wait_for_apt
+sudo sed -i '/cdrom/s/^/#/' /etc/apt/sources.list 2>/dev/null || true
+sudo dpkg --add-architecture i386 || true
 
-if pacman -Qq plasma-desktop &>/dev/null || pacman -Qq plasma-workspace &>/dev/null; then
+if [[ -f /etc/apt/sources.list ]]; then
+    if ! grep -q "non-free-firmware" /etc/apt/sources.list; then
+        sudo sed -i -E 's/ main($| )/ main contrib non-free non-free-firmware\1/' /etc/apt/sources.list || true
+    fi
+fi
+
+if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then
+    if ! grep -q "non-free-firmware" /etc/apt/sources.list.d/debian.sources; then
+        sudo sed -i -E '/^Components:/ s/$/ contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources || true
+    fi
+fi
+
+DEBIAN_CODENAME="$(. /etc/os-release 2>/dev/null && echo "$VERSION_CODENAME")"
+[[ -z "$DEBIAN_CODENAME" ]] && DEBIAN_CODENAME="trixie"
+if ! grep -rqE "^[^#]*${DEBIAN_CODENAME}-backports" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+    echo "deb http://deb.debian.org/debian ${DEBIAN_CODENAME}-backports main contrib non-free non-free-firmware" | sudo tee /etc/apt/sources.list.d/backports.list > /dev/null
+    sudo apt-get update -yq || true
+fi
+
+wait_for_apt
+sudo apt-get update -yq || true
+for pkg in curl wget gnupg pciutils dconf-cli; do
+    sudo apt-get install -yq "$pkg" || true
+done
+sudo mkdir -p /etc/apt/keyrings
+sudo chmod 755 /etc/apt/keyrings
+
+show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
+
+if [ ! -f /etc/apt/keyrings/google-chrome.gpg ]; then
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor --yes -o /etc/apt/keyrings/google-chrome.gpg
+    sudo chmod 644 /etc/apt/keyrings/google-chrome.gpg
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
+fi
+
+sudo mkdir -p /usr/share/keyrings
+sudo rm -f /usr/share/keyrings/brave-browser-archive-keyring.gpg
+BRAVE_KEY_ID="0686B78420038257"
+BRAVE_GNUPGHOME="$(mktemp -d)"
+if ! gpg --homedir "$BRAVE_GNUPGHOME" --keyserver hkps://keyserver.ubuntu.com --recv-keys "$BRAVE_KEY_ID"; then
+    gpg --homedir "$BRAVE_GNUPGHOME" --keyserver hkps://keys.openpgp.org --recv-keys "$BRAVE_KEY_ID" || true
+fi
+gpg --homedir "$BRAVE_GNUPGHOME" --export "$BRAVE_KEY_ID" | sudo tee /usr/share/keyrings/brave-browser-archive-keyring.gpg > /dev/null
+rm -rf "$BRAVE_GNUPGHOME"
+sudo chmod 644 /usr/share/keyrings/brave-browser-archive-keyring.gpg
+sudo curl -fsSLo /etc/apt/sources.list.d/brave-browser-release.sources https://brave-browser-apt-release.s3.brave.com/brave-browser.sources
+
+wait_for_apt
+sudo apt-get update -yq && sudo apt-get full-upgrade -yq || true
+
+show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
+
+wait_for_apt
+sudo apt-get install -yq isenkram-cli firmware-linux firmware-linux-nonfree || true
+sudo isenkram-autoinstall-firmware || true
+
+PACKAGES_REMOVE=(nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt dragonplayer elisa kontact kmail kontrast plasma-welcome kaddressbook kdepim-runtime akonadi-server akregator korganizer epiphany decibels gnome-user-docs gnome-contacts gnome-maps gnome-weather gnome-calendar gnome-clocks gnome-music parole rhythmbox showtime kwalletmanager evolution,evolution-common,evolution-plugins,evolution-ews)
+for pkg in "${PACKAGES_REMOVE[@]}"; do
+    sudo apt-get purge -yq "$pkg" 2>/dev/null || true
+done
+sudo apt-get autoremove -yq || true
+
+rm -rf ~/.local/share/akonadi ~/.local/share/kmail2 ~/.local/share/local-mail ~/.local/share/contacts ~/.local/share/korganizer ~/.local/share/akregator ~/.local/share/kontact ~/.local/share/konqueror
+rm -rf ~/.config/akonadi* ~/.config/kmail* ~/.config/kontact* ~/.config/korganizer* ~/.config/kaddressbook* ~/.config/akregator* ~/.config/emailidentities ~/.config/mailtransports
+rm -rf ~/.cache/akonadi* ~/.cache/kmail* ~/.cache/kontact* ~/.cache/korganizer* ~/.cache/kaddressbook* ~/.cache/akregator* ~/.cache/konqueror*
+rm -rf ~/.local/share/{epiphany,decibels,gnome-user-docs,gnome-contacts,gnome-maps,gnome-weather,gnome-calendar,gnome-clocks,evolution,gnome-music,parole,rhythmbox,showtime,epiphany,decibels,dragonplayer,elisa}
+rm -rf ~/.config/{epiphany,decibels,gnome-user-docs,gnome-contacts,gnome-maps,gnome-weather,gnome-calendar,gnome-clocks,evolution,gnome-music,parole,rhythmbox,showtime,epiphany,decibels,dragonplayer,elisa}
+rm -rf ~/.cache/{epiphany,decibels,gnome-user-docs,gnome-contacts,gnome-maps,gnome-weather,gnome-calendar,gnome-clocks,evolution,gnome-music,parole,rhythmbox,showtime,epiphany,decibels,dragonplayer,elisa}
+command -v dconf &>/dev/null && dconf reset -f /org/gnome/evolution/ || true
+
+if dpkg -l plasma-desktop 2>/dev/null | grep -q '^ii' || dpkg -l plasma-workspace 2>/dev/null | grep -q '^ii'; then
     mkdir -p ~/.config
     cat > ~/.config/kwalletrc << 'EOF'
 [Wallet]
@@ -255,91 +263,30 @@ Use One Wallet=true
 apiEnabled=false
 EOF
 fi
-rm -rf ~/.config/akonadi* ~/.config/kmail* ~/.config/kontact* ~/.config/korganizer* ~/.config/kaddressbook* ~/.config/akregator* ~/.config/emailidentities ~/.config/mailtransports
-rm -rf ~/.cache/akonadi* ~/.cache/kmail* ~/.cache/kontact* ~/.cache/korganizer* ~/.cache/kaddressbook* ~/.cache/akregator* ~/.cache/konqueror*
-rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution,dragonplayer,elisa}
-rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution,dragonplayer,elisa}
-rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution,dragonplayer,elisa}
 
-show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
-
-sudo sed -i 's/^#[[:space:]]*Color/Color/' /etc/pacman.conf
-if ! grep -qw "ILoveCandy" /etc/pacman.conf; then
-    sudo sed -i '/^Color/a ILoveCandy' /etc/pacman.conf
-fi
-sudo sed -i 's/^[[:space:]]*CheckSpace/#CheckSpace/' /etc/pacman.conf
-sudo sed -i 's/^#[[:space:]]*ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
-sudo sed -i 's/^ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
-sudo sed -i 's/^#[[:space:]]*VerbosePkgLists/VerbosePkgLists/' /etc/pacman.conf
-
-if ! grep -q "NoExtract = usr/share/locale" /etc/pacman.conf; then
-    sudo sed -i '/^\[options\]/a NoExtract = usr/share/locale/* !usr/share/locale/pl* !usr/share/locale/en*\nNoExtract = usr/share/cups/doc/*' /etc/pacman.conf
-fi
-if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
-    sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf
-fi
-sudo pacman -S --noconfirm cups || true
-
-sudo mkdir -p /etc/NetworkManager/conf.d
-echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
-echo -e "[global-dns]\n\n[global-dns-domain-*]\nservers=1.1.1.1,1.0.0.1,2606:4700:4700::1112,2606:4700:4700::1002" | sudo tee /etc/NetworkManager/conf.d/global-dns.conf > /dev/null
-
-ACTIVE_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep -v "^lo" | head -n 1 | cut -d: -f1 || true)
-if [[ -n "$ACTIVE_CONN" ]]; then
-    sudo nmcli connection modify "$ACTIVE_CONN" ipv4.dns "1.1.1.1,1.0.0.1" ipv6.dns "2606:4700:4700::1112,2606:4700:4700::1002"
-    sudo nmcli connection up "$ACTIVE_CONN" || true
-fi
-
-show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
-
-# =============================================================
+# ==========================================================
 #  ETAP 2/3: INSTALACJA PAKIETÓW I OPROGRAMOWANIA
-# =============================================================
+# ==========================================================
 show_progress 4 $TOTAL_STEPS "$MSG_PHASE_2"
 
-sudo pacman -Syu --noconfirm || true
-
-show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
-
-SYSTEM_PKGS=(
-    base-devel git zsh pacman-contrib fastfetch reflector
-    gcc make cmake meson ninja just firefox firefox-i18n-pl 
-    python-pip python-tqdm python-defusedxml python-packaging
-    partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
-    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 
-    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
-    bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
-    thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
-    vlc vlc-plugins-all libappimage handbrake xorg-xhost
-    krita krita-plugin-gmic gimp gmic kate cdemu-client cdemu-daemon vhba-module
-    audacity qmmp mixxx kdenlive soundconverter
-    gst-plugins-good gst-plugins-bad gst-plugins-ugly
-    discord telegram-desktop qbittorrent 
-    libreoffice-fresh libreoffice-fresh-pl hunspell-pl
-    wine-staging winetricks gamemode gamescope mangohud goverlay vkd3d
-    vulkan-dzn vulkan-gfxstream vulkan-swrast resources
-    virt-manager qemu-desktop libvirt edk2-ovmf
-    lib32-mpg123 lib32-libvdpau lib32-libtheora lib32-speex
-    lib32-libxrandr lib32-libxrender lib32-gamemode
-    lib32-vulkan-swrast lib32-vkd3d lib32-alsa-plugins
-    lib32-libpulse lib32-openal lib32-mangohud lib32-pipewire
+wait_for_apt
+PACKAGES_INSTALL=(
+    google-chrome-stable brave-origin thunderbird thunderbird-l10n-pl
+    qbittorrent audacity gimp krita gmic mixxx kdenlive handbrake soundconverter
+    vim dconf-editor hunspell-pl fastfetch bleachbit profile-sync-daemon
+    plymouth plymouth-themes unrar-free mc btrfs-progs exfatprogs ntfs-3g os-prober
+    adb fastboot fsarchiver inxi pv rsync cdemu-daemon cdemu-client
+    7zip makeself zenity innoextract needrestart flatpak timeshift
+    python3-defusedxml python3-packaging python3-pip python3-tqdm vlc vlc-plugin-access-extra
+    libayatana-appindicator3-1 gamemode vulkan-tools mangohud qmmp qmmp-plugin-pack
+    vkd3d-compiler goverlay gcc make cmake meson ninja-build just build-essential git
+    gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+    zsh zsh-syntax-highlighting zsh-autosuggestions
+    pkg-config libvulkan-dev mesa-common-dev
 )
-
-for vendor in "${GPU_VENDORS[@]}"; do
-    case "$vendor" in
-        "nvidia") SYSTEM_PKGS+=(lib32-nvidia-utils lib32-vulkan-icd-loader) ;;
-        "amd")    SYSTEM_PKGS+=(lib32-vulkan-radeon lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
-        "intel")  SYSTEM_PKGS+=(lib32-libva-intel-driver lib32-vulkan-intel lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
-    esac
+for pkg in "${PACKAGES_INSTALL[@]}"; do
+    sudo apt-get install -yq "$pkg" || true
 done
-
-if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
-    readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
-fi
-
-install_pacman_pkgs "${SYSTEM_PKGS[@]}"
-
-sudo depmod -a &>/dev/null || true
 
 sudo systemctl disable --now cdemu-daemon 2>/dev/null || true
 sudo systemctl mask cdemu-daemon 2>/dev/null || true
@@ -356,376 +303,132 @@ for f in /etc/xdg/autostart/gcdemu.desktop /etc/xdg/autostart/cdemu.desktop /usr
 done
 pkill -f gcdemu 2>/dev/null || true
 
+if ! sudo apt-get install -yq telegram-desktop 2>/dev/null; then
+    sudo apt-get install -yq -t "${DEBIAN_CODENAME}-backports" telegram-desktop 2>/dev/null || true
+fi
+
+show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
+
+sudo apt-get install -yq cabextract unzip wget >/dev/null 2>&1 || true
+if sudo curl -fsSLo /usr/local/bin/winetricks https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks && sudo chmod +x /usr/local/bin/winetricks; then
+    :
+else
+    sudo apt-get install -yq winetricks || true
+fi
+
 show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
+
+wait_for_apt
+sudo apt-get install -yq libpulse0:i386 libopenal1:i386 mangohud:i386 || true
+
+if ! sudo apt-get install -yq wine wine64 wine32:i386; then
+    for pkg in wine wine64 wine32; do
+        sudo apt-get purge -yq "$pkg" 2>/dev/null || true
+    done
+    sudo mkdir -pm755 /etc/apt/keyrings
+    if sudo curl -fsSLo /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && sudo curl -fsSLo /etc/apt/sources.list.d/winehq.sources https://dl.winehq.org/wine-builds/debian/dists/trixie/winehq-trixie.sources; then
+        wait_for_apt
+        sudo apt-get update -yq || true
+        sudo apt-get install -yq --install-recommends winehq-stable || true
+    fi
+fi
+
+show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
+
+VGA_INFO=""
+HYBRID_GPU=false
+GPU_VENDORS=()
+if command -v lspci &>/dev/null; then
+    VGA_INFO=$(lspci -nn | grep -iE "VGA|3D|Display" || true)
+
+    echo "$VGA_INFO" | grep -qi "intel"     && GPU_VENDORS+=("intel")
+    echo "$VGA_INFO" | grep -qi -E "amd|ati" && GPU_VENDORS+=("amd")
+    echo "$VGA_INFO" | grep -qi "nvidia"    && GPU_VENDORS+=("nvidia")
+
+    TOTAL_KNOWN=${#GPU_VENDORS[@]}
+
+    if [ -z "$VGA_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
+        HYBRID_GPU=false
+        wait_for_apt
+        sudo apt-get install -yq libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386 || true
+    elif [ "$TOTAL_KNOWN" -ge 2 ]; then
+        HYBRID_GPU=true
+    else
+        HYBRID_GPU=false
+    fi
+else
+    wait_for_apt
+    sudo apt-get install -yq libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386 || true
+fi
+
+MODULES_FILE="/etc/initramfs-tools/modules"
+add_module() { grep -q "^$1" "$MODULES_FILE" || echo "$1" | sudo tee -a "$MODULES_FILE" > /dev/null; }
+
+wait_for_apt
+if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
+    for vendor in "${GPU_VENDORS[@]}"; do
+        case "$vendor" in
+            "nvidia")
+                sudo apt-get install -yq libgl1-nvidia-glvnd-glx:i386 || true
+                add_module "nvidia"
+                add_module "nvidia_modeset"
+                add_module "nvidia_uvm"
+                add_module "nvidia_drm"
+                ;;
+            "amd")
+                sudo apt-get install -yq libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386 || true
+                add_module "amdgpu"
+                ;;
+            "intel")
+                sudo apt-get install -yq libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386 || true
+                add_module "i915"
+                ;;
+        esac
+    done
+else
+    sudo apt-get install -yq libgl1-mesa-dri:i386 mesa-vulkan-drivers:i386 || true
+fi
+sudo update-initramfs -u || true
+
+show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
 sudo flatpak update --appstream || true
 sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
+sudo flatpak install -y flathub it.mijorus.gearlever || true
 
-show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
+mkdir -p "$DEB_DIR"
+download_deb() { wget -q --timeout=30 -O "$3" "$2" || rm -f "$3"; }
+get_github_deb_url() { curl -sfL "https://api.github.com/repos/${1}/releases/latest" | grep "browser_download_url.*${2}" | cut -d '"' -f 4 || true; }
 
-if ! command -v yay &>/dev/null; then
-    sudo timedatectl set-ntp true &>/dev/null || true
+download_deb "Discord" "https://discord.com/api/download?platform=linux&format=deb" "$DEB_DIR/discord.deb"
+HEROIC_URL=$(get_github_deb_url "Heroic-Games-Launcher/HeroicGamesLauncher" "amd64\\.deb")
+OPENCODE_URL=$(get_github_deb_url "anomalyco/opencode" "opencode-desktop-linux-amd64\\.deb")
 
-    rm -rf /tmp/yay
-    if ! retry_cmd 5 git clone https://aur.archlinux.org/yay.git /tmp/yay; then
-        rm -rf /tmp/yay
-        mkdir -p /tmp/yay
-        if ! retry_cmd 5 curl -4 -fsSL \
-            "https://aur.archlinux.org/cgit/aur.git/snapshot/yay.tar.gz" \
-            -o /tmp/yay.tar.gz; then
-            exit 1
-        fi
-        tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1
-        rm -f /tmp/yay.tar.gz
-    fi
-    (cd /tmp/yay && makepkg -si --noconfirm) || true
+[[ -n "$HEROIC_URL" ]] && download_deb "Heroic Games Launcher" "$HEROIC_URL" "$DEB_DIR/heroic.deb"
+[[ -n "$OPENCODE_URL" ]] && download_deb "opencode-desktop" "$OPENCODE_URL" "$DEB_DIR/opencode-desktop.deb"
+
+shopt -s nullglob
+DEB_FILES=("$DEB_DIR"/*.deb)
+if [[ ${#DEB_FILES[@]} -gt 0 ]]; then
+    wait_for_apt
+    for deb in "${DEB_FILES[@]}"; do
+        sudo apt-get install -yq "$deb" || true
+    done
 fi
+shopt -u nullglob
+rm -rf "$DEB_DIR"
 
-yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false || true
-
-AUR_PKGS=(ventoy-bin google-chrome brave-origin-bin heroic-games-launcher-bin opencode-desktop-bin shelly-flatpak-backend-bin dmemcg-booster needrestart makeself)
-install_yay_pkgs "${AUR_PKGS[@]}"
-
-show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
-
-# =============================================================
+# ==========================================================
 #  ETAP 3/3: KONFIGURACJA USŁUG, BOOTLOADERA I ŚRODOWISKA
-# =============================================================
+# ==========================================================
 show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
-CMDLINE="quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles"
-[[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
+wait_for_apt
+sudo apt-get install -yq virt-manager qemu-system qemu-utils libvirt-daemon-system libvirt-clients ovmf dnsmasq bluetooth bluez bluez-firmware bluez-tools ufw || true
 
-BOOT_METHODS_FOUND=()
-
-declare -a LOADER_ROOTS=()
-if command -v bootctl &>/dev/null; then
-    for p in "$(bootctl --print-esp-path 2>/dev/null || true)" \
-             "$(bootctl --print-boot-path 2>/dev/null || true)"; do
-        [ -n "$p" ] && [ -d "$p" ] && LOADER_ROOTS+=("$p")
-    done
-fi
-for p in /boot /efi /boot/efi; do
-    [ -d "$p" ] && LOADER_ROOTS+=("$p")
-done
-
-if [ ${#LOADER_ROOTS[@]} -gt 0 ]; then
-    readarray -t LOADER_ROOTS < <(printf '%s\n' "${LOADER_ROOTS[@]}" | awk '!seen[$0]++')
-fi
-
-broot_f() { sudo test -f "$1" 2>/dev/null; }
-broot_d() { sudo test -d "$1" 2>/dev/null; }
-grep() { sudo grep "$@" 2>/dev/null; }
-broot_glob_first() { sudo find "$1" -maxdepth 1 -iname "$2" -print -quit 2>/dev/null; }
-
-UKI_EFI_FOUND=false
-for r in "${LOADER_ROOTS[@]}"; do
-    if [ -n "$(broot_glob_first "$r/EFI/Linux" '*.efi')" ]; then
-        UKI_EFI_FOUND=true
-        break
-    fi
-done
-if [ -f /etc/kernel/cmdline ] && \
-   { grep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
-     [ "$UKI_EFI_FOUND" = true ]; }; then
-    BOOT_METHODS_FOUND+=("uki")
-    if ! grep -qw "splash" /etc/kernel/cmdline; then
-        sudo sed -i "s/\$/ $CMDLINE/" /etc/kernel/cmdline
-        sudo sed -i 's/  */ /g'       /etc/kernel/cmdline
-    fi
-fi
-
-SYSTEMD_BOOT_DETECTED=false
-for r in "${LOADER_ROOTS[@]}"; do
-    broot_f "$r/loader/loader.conf" && SYSTEMD_BOOT_DETECTED=true
-done
-if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
-    BOOT_METHODS_FOUND+=("systemd-boot")
-    for loader_root in "${LOADER_ROOTS[@]}"; do
-        if broot_d "$loader_root/loader/entries"; then
-            if broot_f "$loader_root/loader/loader.conf"; then
-                if grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
-                    sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
-                else
-                    echo "timeout 0" | sudo tee -a "$loader_root/loader/loader.conf" >/dev/null
-                fi
-            fi
-
-            for entry in $(sudo find "$loader_root/loader/entries" -maxdepth 1 -iname '*.conf' 2>/dev/null); do
-                if ! grep -qw "splash" "$entry"; then
-                    sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry"
-                    sudo sed -i 's/  */ /g' "$entry"
-                fi
-            done
-        fi
-    done
-    sudo bootctl set-timeout 0 &>/dev/null || true
-fi
-
-if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
-    BOOT_METHODS_FOUND+=("grub")
-    sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
-    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" \
-        /etc/default/grub
-    sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
-fi
-
-# --- Limine ---
-declare -a LIMINE_CONFS=()
-for candidate in /boot/limine.conf /efi/limine.conf \
-                  /boot/EFI/Limine/limine.conf /efi/EFI/Limine/limine.conf \
-                  /boot/EFI/BOOT/limine.conf /efi/EFI/BOOT/limine.conf \
-                  /boot/limine.cfg /efi/limine.cfg; do
-    broot_f "$candidate" && LIMINE_CONFS+=("$candidate")
-done
-
-patch_one_limine_conf() {
-    local f="$1"
-    broot_f "$f" || return 0
-    if [[ "$f" == *.conf ]]; then
-        if grep -qiE '^timeout:' "$f"; then
-            sudo sed -i -E 's/^timeout:.*/timeout: 0/I' "$f"
-        else
-            sudo sed -i '1i timeout: 0' "$f"
-        fi
-        sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$f"
-    else
-        if grep -qiE '^timeout=' "$f"; then
-            sudo sed -i -E 's/^timeout=.*/TIMEOUT=0/I' "$f"
-        else
-            sudo sed -i '1i TIMEOUT=0' "$f"
-        fi
-        sudo sed -i -E "/^[[:space:]]*CMDLINE=/{/splash/!s/\$/ $CMDLINE/}" "$f"
-    fi
-    sudo sed -i 's/[[:space:]]\{2,\}/ /g' "$f"
-}
-
-patch_limine_conf() {
-    local f
-    for f in "${LIMINE_CONFS[@]}"; do
-        patch_one_limine_conf "$f"
-    done
-    if [ ${#LIMINE_CONFS[@]} -gt 1 ]; then
-        local src="${LIMINE_CONFS[0]}"
-        for f in "${LIMINE_CONFS[@]:1}"; do
-            [[ "$src" == *.conf && "$f" == *.conf ]] && sudo cp -f "$src" "$f" 2>/dev/null || true
-        done
-    fi
-}
-
-if [ ${#LIMINE_CONFS[@]} -gt 0 ]; then
-    BOOT_METHODS_FOUND+=("limine")
-    patch_limine_conf
-fi
-
-# --- rEFInd ---
-REFIND_CONF=""
-for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf \
-                 /boot/refind_linux.conf /efi/refind_linux.conf; do
-    broot_f "$candidate" && { REFIND_CONF="$candidate"; break; }
-done
-if [ -n "$REFIND_CONF" ]; then
-    BOOT_METHODS_FOUND+=("refind")
-
-    REFIND_MAIN_CONF=""
-    for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf; do
-        broot_f "$candidate" && { REFIND_MAIN_CONF="$candidate"; break; }
-    done
-    if [ -n "$REFIND_MAIN_CONF" ]; then
-        if grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
-            sudo sed -i -E 's/^timeout[[:space:]].*/timeout -1/' "$REFIND_MAIN_CONF"
-        else
-            echo "timeout -1" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
-        fi
-    fi
-
-    for rl_conf in /boot/refind_linux.conf /efi/refind_linux.conf \
-                   /boot/EFI/Linux/refind_linux.conf /efi/EFI/Linux/refind_linux.conf; do
-        broot_f "$rl_conf" || continue
-        sudo sed -i -E "/splash/! s/^([[:space:]]*\"[^\"]*\"[[:space:]]+\")([^\"]*)\"[[:space:]]*\$/\\1\\2 ${CMDLINE}\"/" "$rl_conf"
-    done
-fi
-
-# --- EFISTUB ---
-EFISTUB_FOUND=false
-if command -v efibootmgr &>/dev/null; then
-    re_boot_line='^Boot([0-9A-Fa-f]{4})\*?[[:space:]]*(.*)$'
-    re_file_node='/File\(([^)]*)\)(.*)$'
-    re_partuuid='GPT,([0-9A-Fa-f-]{36})'
-    while IFS= read -r line; do
-        [[ "$line" =~ $re_boot_line ]] || continue
-        boot_num="${BASH_REMATCH[1]}"
-        rest="${BASH_REMATCH[2]}"
-        [[ "$rest" =~ $re_file_node ]] || continue
-        loader_path="${BASH_REMATCH[1]}"
-        cmdline_data="${BASH_REMATCH[2]}"
-        [[ "$loader_path" == *.efi || "$loader_path" == *.EFI ]] && continue
-        [[ "$loader_path" =~ [Vv][Mm][Ll][Ii][Nn][Uu][Zz] ]] || continue
-
-        EFISTUB_FOUND=true
-
-        if ! grep -qw "splash" <<<"$cmdline_data"; then
-            partuuid=""
-            [[ "$rest" =~ $re_partuuid ]] && partuuid="${BASH_REMATCH[1]}"
-            label="${rest%%$'\t'*}"
-            if [ -n "$partuuid" ] && command -v blkid &>/dev/null; then
-                part_dev="$(blkid --match-token "PARTUUID=$partuuid" -o device 2>/dev/null || true)"
-                if [ -n "$part_dev" ]; then
-                    re_nvme_part='^(.*[0-9])p([0-9]+)$'
-                    re_sata_part='^(.*[a-zA-Z])([0-9]+)$'
-                    if [[ "$part_dev" =~ $re_nvme_part ]]; then
-                        disk_dev="${BASH_REMATCH[1]}"; part_num="${BASH_REMATCH[2]}"
-                    elif [[ "$part_dev" =~ $re_sata_part ]]; then
-                        disk_dev="${BASH_REMATCH[1]}"; part_num="${BASH_REMATCH[2]}"
-                    else
-                        disk_dev=""; part_num=""
-                    fi
-                    if [ -n "$disk_dev" ] && [ -n "$part_num" ]; then
-                        loader_path_bs="$(sed 's#/#\\#g' <<<"$loader_path")"
-                        new_cmdline="$(sed 's/[[:space:]]*$//' <<<"$cmdline_data") $CMDLINE"
-                        new_cmdline="$(sed 's/  */ /g' <<<"$new_cmdline")"
-                        sudo efibootmgr -b "$boot_num" -B &>/dev/null || true
-                        sudo efibootmgr -c -d "$disk_dev" -p "$part_num" \
-                            -L "$label" -l "$loader_path_bs" -u "$new_cmdline" &>/dev/null || true
-                    fi
-                fi
-            fi
-        fi
-    done < <(efibootmgr -v 2>/dev/null)
-fi
-[ "$EFISTUB_FOUND" = true ] && BOOT_METHODS_FOUND+=("efistub")
-
-if [[ " ${BOOT_METHODS_FOUND[*]} " != *" systemd-boot "* ]] && \
-   [[ " ${BOOT_METHODS_FOUND[*]} " != *" grub "* ]] && \
-   [[ " ${BOOT_METHODS_FOUND[*]} " != *" limine "* ]] && \
-   [[ " ${BOOT_METHODS_FOUND[*]} " != *" refind "* ]] && \
-   command -v efibootmgr &>/dev/null; then
-    sudo efibootmgr -t 0 &>/dev/null || true
-fi
-
-show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
-
-sudo plymouth-set-default-theme -R bgrt 2>/dev/null || true
-
-if [[ $GPU_TYPE == *"nvidia"* ]]; then
-    grep -q "nvidia_drm" /etc/mkinitcpio.conf || \
-        sudo sed -i 's/^MODULES=(/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm /' /etc/mkinitcpio.conf
-fi
-if [[ $GPU_TYPE == *"amd"* ]]; then
-    grep -q "amdgpu" /etc/mkinitcpio.conf || \
-        sudo sed -i 's/^MODULES=(/MODULES=(amdgpu /' /etc/mkinitcpio.conf
-fi
-if [[ $GPU_TYPE == *"intel"* ]]; then
-    grep -q "^MODULES=([^)]*i915" /etc/mkinitcpio.conf || \
-        sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf
-fi
-
-PLYMOUTHD_CONF="/etc/plymouth/plymouthd.conf"
-[ -f "$PLYMOUTHD_CONF" ] || printf '[Daemon]\n' | sudo tee "$PLYMOUTHD_CONF" >/dev/null
-grep -q '^\[Daemon\]' "$PLYMOUTHD_CONF" || sudo sed -i '1i [Daemon]' "$PLYMOUTHD_CONF"
-
-if grep -q '^Theme=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF"
-elif grep -q '^#Theme=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^#Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF"
-else
-    sudo sed -i '/^\[Daemon\]/a Theme=bgrt' "$PLYMOUTHD_CONF"
-fi
-
-if grep -q '^ShowDelay=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF"
-elif grep -q '^#ShowDelay=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^#ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF"
-else
-    sudo sed -i '/^\[Daemon\]/a ShowDelay=0' "$PLYMOUTHD_CONF"
-fi
-
-for preset in /etc/mkinitcpio.d/*.preset; do
-    [ -f "$preset" ] && sudo sed -i 's/--splash [^ "]*//g' "$preset"
-done
-
-if ! grep -qE '^HOOKS=.*(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|\))' /etc/mkinitcpio.conf; then
-    if grep -qE '^HOOKS=.*(^|[[:space:]])kms([[:space:]]|\))' /etc/mkinitcpio.conf; then
-        if grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
-            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms sd-plymouth/' /etc/mkinitcpio.conf
-        else
-            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms plymouth/' /etc/mkinitcpio.conf
-        fi
-    elif grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
-        sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd kms sd-plymouth/' /etc/mkinitcpio.conf
-    else
-        sudo sed -i '/^HOOKS=/ s/\budev\b/udev kms plymouth/' /etc/mkinitcpio.conf
-    fi
-fi
-
-fix_uki_collisions() {
-    local -A seen_uki=()
-    local preset kname uki_key line uki_path new_path suffix
-    for preset in /etc/mkinitcpio.d/*.preset; do
-        [ -f "$preset" ] || continue
-        kname="$(basename "$preset" .preset)"
-        for uki_key in default_uki fallback_uki; do
-            line="$(grep -E "^${uki_key}=" "$preset" 2>/dev/null || true)"
-            [ -z "$line" ] && continue
-            uki_path="$(sed -E "s/^${uki_key}=\"?([^\"]*)\"?.*/\1/" <<<"$line")"
-            [ -z "$uki_path" ] && continue
-            if [ -n "${seen_uki[$uki_path]:-}" ] && [ "${seen_uki[$uki_path]}" != "$kname" ]; then
-                suffix=""
-                [[ "$uki_key" == "fallback_uki" ]] && suffix="-fallback"
-                new_path="$(dirname "$uki_path")/arch-${kname}${suffix}.efi"
-                sudo sed -i "s#^${uki_key}=.*#${uki_key}=\"${new_path}\"#" "$preset"
-                seen_uki["$new_path"]="$kname"
-            else
-                seen_uki["$uki_path"]="$kname"
-            fi
-        done
-    done
-}
-fix_uki_collisions
-
-sudo mkinitcpio -P || true
-
-if [ ${#LIMINE_CONFS[@]} -gt 0 ] && pacman -Qq limine-mkinitcpio-hook &>/dev/null; then
-    for candidate in /boot/limine.conf /efi/limine.conf \
-                      /boot/EFI/Limine/limine.conf /efi/EFI/Limine/limine.conf \
-                      /boot/EFI/BOOT/limine.conf /efi/EFI/BOOT/limine.conf \
-                      /boot/limine.cfg /efi/limine.cfg; do
-        if broot_f "$candidate" && [[ ! " ${LIMINE_CONFS[*]} " == *" ${candidate} "* ]]; then
-            LIMINE_CONFS+=("$candidate")
-        fi
-    done
-    patch_limine_conf
-fi
-
-show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
-
-if [ -f /etc/default/ufw ]; then
-    sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-fi
-
-if command -v ufw &>/dev/null; then
-    sudo ufw allow ssh || true
-    sudo systemctl enable --now ufw || true
-    sudo ufw allow in  on virbr0 || true
-    sudo ufw allow out on virbr0 || true
-fi
-
-sudo systemctl enable --now geoclue.service || true
-sudo systemctl enable --now ananicy-cpp || true
-sudo systemctl enable --now fstrim.timer || true
-sudo systemctl enable --now bluetooth || true
-echo "options btusb enable_autosuspend=0" | sudo tee /etc/modprobe.d/btusb.conf
-sudo systemctl enable --now libvirtd || true
-
-if ! sudo virsh net-info default &>/dev/null; then
-    sudo virsh net-define /usr/share/libvirt/networks/default.xml || true
-fi
-
-sudo virsh net-start default 2>/dev/null || true
-sudo virsh net-autostart default || true
-
-dconf load /org/virt-manager/virt-manager/ <<'EOF'
+if command -v dconf &>/dev/null; then
+    dconf load /org/virt-manager/virt-manager/ <<'EOF'
 [/]
 manager-window-height=297
 manager-window-width=478
@@ -764,31 +467,86 @@ network-traffic=false
 autoconnect=1
 vm-window-size=(1280, 842)
 EOF
+else
+    log_warn "Brak polecenia dconf – pomijam wczytanie ustawień virt-managera." "dconf command not found – skipping virt-manager settings import."
+fi
 
-sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
-sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStartSec=.*/DefaultTimeoutStartSec=3s/' /etc/systemd/system.conf
-sudo systemctl disable NetworkManager-wait-online.service || true
-sudo journalctl --vacuum-time=2d || true
+for svc in libvirtd virtqemud; do
+    if systemctl list-unit-files "${svc}.service" 2>/dev/null | grep -q "$svc"; then
+        sudo systemctl enable --now "${svc}.service" || true
+        break
+    fi
+done
 
-for grp in libvirt kvm; do
+if ! sudo virsh net-info default &>/dev/null; then
+    sudo virsh net-define /usr/share/libvirt/networks/default.xml || true
+fi
+sudo virsh net-start default 2>/dev/null || true
+sudo virsh net-autostart default || true
+
+if command -v ufw &>/dev/null || [[ -x /usr/sbin/ufw ]]; then
+    [[ -f /etc/default/ufw ]] && sudo sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw || true
+    sudo ufw --force reset || true
+    sudo ufw default deny incoming || true
+    sudo ufw default allow outgoing || true
+    sudo ufw allow ssh || true
+    sudo ufw allow in  on virbr0 || true
+    sudo ufw allow out on virbr0 || true
+    sudo ufw allow from 192.168.122.0/24 || true
+    sudo ufw --force enable || true
+fi
+
+for grp in libvirt libvirt-qemu kvm; do
     getent group "$grp" &>/dev/null && sudo usermod -aG "$grp" "$CURRENT_USER" || true
 done
 
+show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
+
+GRUB_CMDLINE_CURRENT="$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub 2>/dev/null | sed -E 's/^GRUB_CMDLINE_LINUX_DEFAULT="(.*)"$/\1/' || true)"
+GRUB_CMDLINE_NEW="$GRUB_CMDLINE_CURRENT"
+for param in quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles; do
+    if [[ " $GRUB_CMDLINE_CURRENT " != *" $param "* ]]; then
+        GRUB_CMDLINE_NEW="${GRUB_CMDLINE_NEW} ${param}"
+    fi
+done
+GRUB_CMDLINE_NEW="$(echo "$GRUB_CMDLINE_NEW" | sed -E 's/ +/ /g; s/^ //; s/ $//')"
+if [[ "$GRUB_CMDLINE_NEW" != "$GRUB_CMDLINE_CURRENT" ]]; then
+    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"${GRUB_CMDLINE_NEW}\"|" /etc/default/grub || true
+fi
+
+sudo plymouth-set-default-theme bgrt || true
+sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub || true
+sudo update-grub || true
+sudo update-initramfs -u || true
+
+show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
+
+sudo systemctl enable fstrim.timer || true
+sudo journalctl --vacuum-time=2d || true
+
+sudo mkdir -p /etc/NetworkManager/conf.d
+echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
+echo -e "[global-dns]\n\n[global-dns-domain-*]\nservers=1.1.1.1,1.0.0.1,2606:4700:4700::1112,2606:4700:4700::1002" | sudo tee /etc/NetworkManager/conf.d/global-dns.conf > /dev/null
+
+ACTIVE_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep -v "^lo" | head -n 1 | cut -d: -f1 || true)
+if [[ -n "$ACTIVE_CONN" ]]; then
+    sudo nmcli connection modify "$ACTIVE_CONN" ipv4.dns "1.1.1.1,1.0.0.1" ipv6.dns "2606:4700:4700::1112,2606:4700:4700::1002"
+    sudo nmcli connection up "$ACTIVE_CONN" || true
+fi
+
 if command -v zsh &>/dev/null; then
     sudo chsh -s /usr/bin/zsh "$CURRENT_USER" || true
-
-    [ ! -d "$HOME/.oh-my-zsh" ] && \
-        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" \
-        "" --unattended || true
-
+    if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+    fi
     P10K_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
-    [ ! -d "$P10K_DIR" ] && \
+    if [[ ! -d "$P10K_DIR" ]]; then
         git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$P10K_DIR" || true
-
-    if [ -f ~/.zshrc ]; then
-        sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc
-        sed -i 's/^plugins=(.*/plugins=(git sudo systemd archlinux)/' ~/.zshrc
-
+    fi
+    ZSHRC="$HOME/.zshrc"
+    if [[ -f "$ZSHRC" ]]; then
+        sed -i 's|^ZSH_THEME=.*|ZSH_THEME="powerlevel10k/powerlevel10k"|' "$ZSHRC" || true
+        sed -i 's/^plugins=(.*/plugins=(git sudo systemd debian)/' "$ZSHRC" || true
         SHELL_LOCALE="${LANG:-${LC_ALL:-${LC_MESSAGES:-en_US.UTF-8}}}"
         if command -v locale &>/dev/null; then
             AVAILABLE_LOCALES="$(locale -a 2>/dev/null)"
@@ -796,22 +554,10 @@ if command -v zsh &>/dev/null; then
                 SHELL_LOCALE="en_US.UTF-8"
             fi
         fi
-        if ! grep -q "^export LC_ALL=" ~/.zshrc; then
-            {
-                echo ""
-                echo "export LC_ALL=${SHELL_LOCALE}"
-                echo "export LC_MESSAGES=${SHELL_LOCALE}"
-                echo "fastfetch"
-            } >> ~/.zshrc
-        fi
-
-        if ! grep -q "zsh-syntax-highlighting.zsh" ~/.zshrc; then
-            {
-                echo ""
-                echo "source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
-                echo "source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
-            } >> ~/.zshrc
-        fi
+        grep -q "^export LC_ALL=" "$ZSHRC" || echo "export LC_ALL=${SHELL_LOCALE}" >> "$ZSHRC"
+        grep -q "^fastfetch"         "$ZSHRC" || echo "fastfetch"                  >> "$ZSHRC"
+        grep -q "zsh-syntax-highlighting.zsh" "$ZSHRC" || echo "source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" >> "$ZSHRC"
+        grep -q "zsh-autosuggestions.zsh"     "$ZSHRC" || echo "source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh"         >> "$ZSHRC"
     fi
 fi
 
@@ -831,9 +577,9 @@ else
     echo -e "${SUCCESS}✔ CONFIGURATION COMPLETED SUCCESSFULLY!${NC}" >&3
 fi
 
-# =============================================================
+# ==========================================================
 #  RESTART SYSTEMU
-# =============================================================
+# ==========================================================
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
     RESTART_PROMPT="Czy chcesz teraz zrestartować system? [T/N]: "
 else
