@@ -387,6 +387,15 @@ yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false || t
 AUR_PKGS=(ventoy-bin google-chrome brave-origin-bin heroic-games-launcher-bin opencode-desktop-bin shelly-flatpak-backend-bin dmemcg-booster needrestart makeself)
 install_yay_pkgs "${AUR_PKGS[@]}"
 
+DESKTOP_FILES_TO_REMOVE=(
+    "gay.pancake.lsfg-vk-ui.desktop"
+    "io.github.eugeniosegala.mako.desktop"
+    "io.github.eugeniosegala.mako.uninstaller.desktop"
+)
+for f in "${DESKTOP_FILES_TO_REMOVE[@]}"; do
+    rm -f "$HOME/.local/share/applications/$f"
+done
+
 show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 
 # =============================================================
