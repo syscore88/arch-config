@@ -316,7 +316,7 @@ SYSTEM_PKGS=(
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
     discord telegram-desktop qbittorrent 
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl
-    wine-staging winetricks gamemode gamescope mangohud goverlay vkd3d
+    wine-staging winetricks gamemode gamescope mangohud vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast resources
     virt-manager qemu-desktop libvirt edk2-ovmf
     lib32-mpg123 lib32-libvdpau lib32-libtheora lib32-speex
