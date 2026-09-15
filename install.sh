@@ -311,7 +311,7 @@ SYSTEM_PKGS=(
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
-    krita krita-plugin-gmic gimp gmic kate cdemu-client cdemu-daemon vhba-module
+    krita krita-plugin-gmic gimp gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
     discord telegram-desktop qbittorrent 
