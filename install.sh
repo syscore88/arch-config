@@ -229,7 +229,7 @@ fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp xarchiver krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb zbar kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager"
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 for pkg in $INSTALLED_PACKAGES; do
     sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
