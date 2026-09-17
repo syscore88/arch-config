@@ -330,7 +330,7 @@ SYSTEM_PKGS=(
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
-    thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
+    zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
     krita krita-plugin-gmic gimp gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
