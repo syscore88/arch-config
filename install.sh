@@ -3,7 +3,7 @@
 #  SKRYPT INSTALACYJNY - Arch Linux
 # =====================================
 
-set -euo pipefail
+set -Eeuo pipefail
 export PATH="/usr/sbin:/sbin:$PATH"
 
 detect_system_lang() {
@@ -32,13 +32,15 @@ exec >>"$TMP_LOG" 2>&1
 cleanup_on_exit() {
     local exit_code=$?
     printf '\033[?7h' >&3
-    if [ "$exit_code" -ne 0 ]; then
+    if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
         echo -e "\n" >&3
         cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true
-        if [[ "$SCRIPT_LANG" == "pl" ]]; then
-            echo -e "${ERR}✘ Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}" >&3
-        else
-            echo -e "${ERR}✘ An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}" >&3
+        if [ "$exit_code" -ne 0 ]; then
+            if [[ "$SCRIPT_LANG" == "pl" ]]; then
+                echo -e "${ERR}✘ Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}" >&3
+            else
+                echo -e "${ERR}✘ An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}" >&3
+            fi
         fi
     fi
     rm -f "$TMP_LOG"
@@ -46,10 +48,11 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT
 
 _pick_msg() { [[ "$SCRIPT_LANG" == "pl" ]] && echo "$1" || echo "$2"; }
-log_info()  { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${INFO}==> $m${NC}"; }
-log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${SUCCESS}✔ $m${NC}"; }
-log_err()   { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${ERR}✘ ERROR: $m${NC}"; }
-log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${WARN}⚠ WARN: $m${NC}"; }
+_log_write() { printf "\r\033[K" >&3; echo -e "$1" >&3; echo -e "$1"; }
+log_info()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${INFO}==> $m${NC}"; }
+log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${SUCCESS}✔ $m${NC}"; }
+log_err()   { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${ERR}✘ ERROR: $m${NC}"; }
+log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${WARN}⚠ WARN: $m${NC}"; }
 
 trap 'log_err "Błąd w linii $LINENO. Polecenie: $BASH_COMMAND" "Error at line $LINENO. Command: $BASH_COMMAND"' ERR
 
@@ -99,6 +102,7 @@ else
 fi
 
 TOTAL_STEPS=12
+FAILED_PACKAGES=()
 
 if [[ "$EUID" -eq 0 ]]; then
     echo -e "${ERR}✘ Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3
@@ -116,10 +120,22 @@ if ! command -v visudo >/dev/null 2>&1 || sudo --version 2>/dev/null | grep -qi 
     USE_RUN0=1
 fi
 
+if [[ "$SCRIPT_LANG" == "pl" ]]; then
+    printf 'Wymagane hasło sudo:\n' >&3
+else
+    printf 'sudo password required:\n' >&3
+fi
 sudo -v
 
 if [[ "$USE_RUN0" -eq 1 ]]; then
-    printf 'polkit._run0_nopasswd.push("%s");\n' "$CURRENT_USER" | sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null
+    sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null << EOF
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "$CURRENT_USER") {
+        return polkit.Result.YES;
+    }
+});
+EOF
     sudo systemctl try-restart polkit 2>/dev/null || true
 else
     SUDOERS_TMP="$(mktemp)"
@@ -147,10 +163,12 @@ install_pacman_pkgs() {
     for pkg in "$@"; do
         if pacman -Si "$pkg" &>/dev/null; then
             valid_pkgs+=("$pkg")
+        else
+            FAILED_PACKAGES+=("$pkg")
         fi
     done
     for pkg in "${valid_pkgs[@]}"; do
-        sudo pacman -S --noconfirm --needed "$pkg" || true
+        sudo pacman -S --noconfirm --needed "$pkg" || FAILED_PACKAGES+=("$pkg")
     done
 }
 
@@ -159,10 +177,12 @@ install_yay_pkgs() {
     for pkg in "$@"; do
         if yay -Si "$pkg" &>/dev/null; then
             valid_pkgs+=("$pkg")
+        else
+            FAILED_PACKAGES+=("$pkg")
         fi
     done
     for pkg in "${valid_pkgs[@]}"; do
-        yay -S --noconfirm --needed "$pkg" || true
+        yay -S --noconfirm --needed "$pkg" || FAILED_PACKAGES+=("$pkg")
     done
 }
 
@@ -202,6 +222,7 @@ if command -v lspci &>/dev/null; then
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
         GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
+        log_info "Wykryto hybrydowy układ graficzny (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE" "Detected a hybrid GPU setup (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE"
     else
         HYBRID_GPU=false
         GPU_TYPE="${GPU_VENDORS[0]}"
@@ -416,7 +437,7 @@ fi
 
 broot_f() { sudo test -f "$1" 2>/dev/null; }
 broot_d() { sudo test -d "$1" 2>/dev/null; }
-grep() { sudo grep "$@" 2>/dev/null; }
+sgrep() { sudo grep "$@" 2>/dev/null; }
 broot_glob_first() { sudo find "$1" -maxdepth 1 -iname "$2" -print -quit 2>/dev/null; }
 
 UKI_EFI_FOUND=false
@@ -427,10 +448,10 @@ for r in "${LOADER_ROOTS[@]}"; do
     fi
 done
 if [ -f /etc/kernel/cmdline ] && \
-   { grep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
+   { sgrep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
      [ "$UKI_EFI_FOUND" = true ]; }; then
     BOOT_METHODS_FOUND+=("uki")
-    if ! grep -qw "splash" /etc/kernel/cmdline; then
+    if ! sgrep -qw "splash" /etc/kernel/cmdline; then
         sudo sed -i "s/\$/ $CMDLINE/" /etc/kernel/cmdline
         sudo sed -i 's/  */ /g'       /etc/kernel/cmdline
     fi
@@ -445,7 +466,7 @@ if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
     for loader_root in "${LOADER_ROOTS[@]}"; do
         if broot_d "$loader_root/loader/entries"; then
             if broot_f "$loader_root/loader/loader.conf"; then
-                if grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
+                if sgrep -q '^timeout ' "$loader_root/loader/loader.conf"; then
                     sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
                 else
                     echo "timeout 0" | sudo tee -a "$loader_root/loader/loader.conf" >/dev/null
@@ -453,7 +474,7 @@ if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
             fi
 
             for entry in $(sudo find "$loader_root/loader/entries" -maxdepth 1 -iname '*.conf' 2>/dev/null); do
-                if ! grep -qw "splash" "$entry"; then
+                if ! sgrep -qw "splash" "$entry"; then
                     sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry"
                     sudo sed -i 's/  */ /g' "$entry"
                 fi
@@ -484,14 +505,14 @@ patch_one_limine_conf() {
     local f="$1"
     broot_f "$f" || return 0
     if [[ "$f" == *.conf ]]; then
-        if grep -qiE '^timeout:' "$f"; then
+        if sgrep -qiE '^timeout:' "$f"; then
             sudo sed -i -E 's/^timeout:.*/timeout: 0/I' "$f"
         else
             sudo sed -i '1i timeout: 0' "$f"
         fi
         sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$f"
     else
-        if grep -qiE '^timeout=' "$f"; then
+        if sgrep -qiE '^timeout=' "$f"; then
             sudo sed -i -E 's/^timeout=.*/TIMEOUT=0/I' "$f"
         else
             sudo sed -i '1i TIMEOUT=0' "$f"
@@ -533,7 +554,7 @@ if [ -n "$REFIND_CONF" ]; then
         broot_f "$candidate" && { REFIND_MAIN_CONF="$candidate"; break; }
     done
     if [ -n "$REFIND_MAIN_CONF" ]; then
-        if grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
+        if sgrep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
             sudo sed -i -E 's/^timeout[[:space:]].*/timeout -1/' "$REFIND_MAIN_CONF"
         else
             echo "timeout -1" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
@@ -565,7 +586,7 @@ if command -v efibootmgr &>/dev/null; then
 
         EFISTUB_FOUND=true
 
-        if ! grep -qw "splash" <<<"$cmdline_data"; then
+        if ! sgrep -qw "splash" <<<"$cmdline_data"; then
             partuuid=""
             [[ "$rest" =~ $re_partuuid ]] && partuuid="${BASH_REMATCH[1]}"
             label="${rest%%$'\t'*}"
@@ -603,6 +624,7 @@ if [[ " ${BOOT_METHODS_FOUND[*]} " != *" systemd-boot "* ]] && \
    command -v efibootmgr &>/dev/null; then
     sudo efibootmgr -t 0 &>/dev/null || true
 fi
+unset -f sgrep
 
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
@@ -824,6 +846,10 @@ fi
 
 show_progress 12 $TOTAL_STEPS "$MSG_PHASE_3"
 echo -e "\n" >&3
+
+if [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
+    log_warn "Nie udało się zainstalować: ${FAILED_PACKAGES[*]}" "Failed to install: ${FAILED_PACKAGES[*]}"
+fi
 
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
     echo -e "${SUCCESS}✔ KONFIGURACJA ZAKOŃCZONA SUKCESEM!${NC}" >&3
