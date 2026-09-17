@@ -31,6 +31,7 @@ exec >>"$TMP_LOG" 2>&1
 
 cleanup_on_exit() {
     local exit_code=$?
+    declare -F restore_packagekit >/dev/null && restore_packagekit || true
     printf '\033[?7h' >&3
     if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
         echo -e "\n" >&3
@@ -55,6 +56,57 @@ log_err()   { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${ERR}✘ ERROR: 
 log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${WARN}⚠ WARN: $m${NC}"; }
 
 trap 'log_err "Błąd w linii $LINENO. Polecenie: $BASH_COMMAND" "Error at line $LINENO. Command: $BASH_COMMAND"' ERR
+
+# ==========================================================
+# PACKAGEKIT + BLOKADA MENEDŻERA PAKIETÓW
+# ==========================================================
+PACKAGEKIT_MASKED=0
+PACKAGEKIT_UNITS=(packagekit.service packagekit-offline-update.service)
+
+disable_packagekit() {
+    [[ "${PACKAGEKIT_MASKED:-0}" -eq 1 ]] && return 0
+    sudo systemctl stop "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
+    if command -v killall >/dev/null 2>&1; then
+        sudo killall -q packagekitd 2>/dev/null || true
+    else
+        sudo pkill -x packagekitd 2>/dev/null || true
+    fi
+    sudo systemctl mask "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
+    PACKAGEKIT_MASKED=1
+    log_info "PackageKit zatrzymany i zamaskowany na czas instalacji." \
+             "PackageKit stopped and masked for the duration of the installation."
+}
+
+restore_packagekit() {
+    [[ "${PACKAGEKIT_MASKED:-0}" -eq 1 ]] || return 0
+    sudo systemctl unmask "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
+    PACKAGEKIT_MASKED=0
+    log_info "PackageKit odmaskowany." "PackageKit unmasked."
+}
+
+_pkg_lock_busy() {
+    local f
+    for f in /var/lib/pacman/db.lck; do
+        [[ -e "$f" ]] || continue
+        sudo fuser "$f" >/dev/null 2>&1 && return 0
+    done
+    pgrep -x 'pacman|packagekitd' >/dev/null 2>&1 && return 0
+    return 1
+}
+
+wait_for_pacman_lock() {
+    local timeout="${1:-300}" waited=0
+    disable_packagekit
+    while _pkg_lock_busy; do
+        if (( waited >= timeout )); then
+            log_warn "Blokada menedżera pakietów trwa ponad ${timeout}s - kontynuuję mimo to." \
+                     "Package manager lock held for over ${timeout}s - continuing anyway."
+            break
+        fi
+        sleep 3
+        waited=$(( waited + 3 ))
+    done
+}
 
 show_progress() {
     local step=$1
@@ -160,7 +212,10 @@ printf '\033[?7l' >&3
 # =============================================================
 show_progress 0 $TOTAL_STEPS "$MSG_PHASE_1"
 
+disable_packagekit
+
 install_pacman_pkgs() {
+    wait_for_pacman_lock
     local valid_pkgs=()
     for pkg in "$@"; do
         if pacman -Si "$pkg" &>/dev/null; then
@@ -175,6 +230,7 @@ install_pacman_pkgs() {
 }
 
 install_yay_pkgs() {
+    wait_for_pacman_lock
     local valid_pkgs=()
     for pkg in "$@"; do
         if yay -Si "$pkg" &>/dev/null; then
@@ -253,6 +309,7 @@ fi
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
 PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb zbar kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager"
+wait_for_pacman_lock
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 for pkg in $INSTALLED_PACKAGES; do
     sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
@@ -301,6 +358,7 @@ fi
 if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
     sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf
 fi
+wait_for_pacman_lock
 sudo pacman -S --noconfirm cups || true
 
 sudo mkdir -p /etc/NetworkManager/conf.d
@@ -320,6 +378,7 @@ show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
 # =============================================================
 show_progress 4 $TOTAL_STEPS "$MSG_PHASE_2"
 
+wait_for_pacman_lock
 sudo pacman -Syu --noconfirm || true
 
 show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
@@ -415,6 +474,8 @@ show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 #  ETAP 3/4: OPTYMALIZACJA
 # =============================================================
 show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
+
+restore_packagekit
 
 CMDLINE="quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
