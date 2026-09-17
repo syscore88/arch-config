@@ -340,10 +340,9 @@ SYSTEM_PKGS=(
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast
     virt-manager qemu-desktop libvirt edk2-ovmf
-    lib32-mpg123 lib32-libvdpau lib32-libtheora lib32-speex
     lib32-libxrandr lib32-libxrender lib32-gamemode
     lib32-vulkan-swrast lib32-vkd3d lib32-alsa-plugins
-    lib32-libpulse lib32-openal lib32-mangohud lib32-pipewire
+    lib32-libpulse lib32-mangohud lib32-pipewire
 )
 
 for vendor in "${GPU_VENDORS[@]}"; do
