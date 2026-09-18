@@ -31,7 +31,10 @@ exec >>"$TMP_LOG" 2>&1
 
 cleanup_on_exit() {
     local exit_code=$?
+    [[ -n "${RUN0_NOPASSWD_FILE:-}" && -f "$RUN0_NOPASSWD_FILE" ]] && { sudo rm -f "$RUN0_NOPASSWD_FILE"; sudo systemctl try-restart polkit 2>/dev/null || true; }
+    [[ -f /etc/sudoers.d/99-temp-installer ]] && sudo rm -f /etc/sudoers.d/99-temp-installer
     declare -F restore_packagekit >/dev/null && restore_packagekit || true
+    [ -n "${SUDO_KEEPALIVE_PID:-}" ] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
     printf '\033[?7h' >&3
     if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
         echo -e "\n" >&3
@@ -73,12 +76,15 @@ disable_packagekit() {
     fi
     sudo systemctl mask "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
     PACKAGEKIT_MASKED=1
+    log_info "PackageKit zatrzymany i zamaskowany na czas instalacji." \
+             "PackageKit stopped and masked for the duration of the installation."
 }
 
 restore_packagekit() {
     [[ "${PACKAGEKIT_MASKED:-0}" -eq 1 ]] || return 0
     sudo systemctl unmask "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
     PACKAGEKIT_MASKED=0
+    log_info "PackageKit odmaskowany." "PackageKit unmasked."
 }
 
 _pkg_lock_busy() {
@@ -176,48 +182,32 @@ if [[ "$SCRIPT_LANG" == "pl" ]]; then
 else
     printf 'sudo password required:\n' >&3
 fi
-read -rs SUDO_PASS < /dev/tty
-printf '\n' >&3
-if ! printf '%s\n' "$SUDO_PASS" | sudo -S -p '' -v 2>/dev/null; then
-    unset SUDO_PASS
-    if [[ "$SCRIPT_LANG" == "pl" ]]; then
-        echo -e "${ERR}✘ Nieprawidłowe hasło sudo. Jeśli konto root ma osobne hasło, dodaj 'Defaults targetpw' w /etc/sudoers i podaj hasło roota.${NC}" >&3
-    else
-        echo -e "${ERR}✘ Incorrect sudo password. If root has a separate password, add 'Defaults targetpw' to /etc/sudoers and enter the root password.${NC}" >&3
-    fi
-    exit 1
-fi
+sudo -v
+( while true; do sudo -n true; sleep 60; kill -0 "$$" 2>/dev/null || exit; done ) &
+SUDO_KEEPALIVE_PID=$!
 
 if [[ "$USE_RUN0" -eq 1 ]]; then
-    printf '%s\n' "$SUDO_PASS" | sudo -S -p '' tee "$RUN0_NOPASSWD_FILE" > /dev/null <<EOF
+    sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null << EOF
 polkit.addRule(function(action, subject) {
-    if (subject.user == "$CURRENT_USER") {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "$CURRENT_USER") {
         return polkit.Result.YES;
     }
 });
 EOF
-    printf '%s\n' "$SUDO_PASS" | sudo -S -p '' systemctl try-restart polkit 2>/dev/null || true
+    sudo systemctl try-restart polkit 2>/dev/null || true
 else
     SUDOERS_TMP="$(mktemp)"
     echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"
     chmod 0440 "$SUDOERS_TMP"
-    if printf '%s\n' "$SUDO_PASS" | sudo -S -p '' visudo -cf "$SUDOERS_TMP" &>/dev/null; then
-        printf '%s\n' "$SUDO_PASS" | sudo -S -p '' install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
+    if sudo visudo -cf "$SUDOERS_TMP" &>/dev/null; then
+        sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
     else
         rm -f "$SUDOERS_TMP"
         echo -e "${ERR}✘ Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
         exit 1
     fi
     rm -f "$SUDOERS_TMP"
-fi
-unset SUDO_PASS
-if ! sudo -n true 2>/dev/null; then
-    if [[ "$SCRIPT_LANG" == "pl" ]]; then
-        echo -e "${ERR}✘ Nie udało się skonfigurować uprawnień bezhasłowych sudo - przerywam.${NC}" >&3
-    else
-        echo -e "${ERR}✘ Failed to configure passwordless sudo - aborting.${NC}" >&3
-    fi
-    exit 1
 fi
 
 printf '\033[?7l' >&3
@@ -400,10 +390,10 @@ show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
 
 SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
-    gcc make cmake meson ninja just firefox firefox-i18n-pl 
+    gcc make cmake meson ninja just firefox firefox-i18n-pl
     python-pip python-tqdm python-defusedxml python-packaging
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
-    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 
+    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     zsh-syntax-highlighting zsh-autosuggestions
@@ -411,7 +401,7 @@ SYSTEM_PKGS=(
     krita krita-plugin-gmic gimp gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
-    discord telegram-desktop qbittorrent 
+    discord telegram-desktop qbittorrent
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast
@@ -914,12 +904,6 @@ if command -v zsh &>/dev/null; then
     fi
 fi
 
-if [[ "$USE_RUN0" -eq 1 ]]; then
-    sudo rm -f "$RUN0_NOPASSWD_FILE"
-    sudo systemctl try-restart polkit 2>/dev/null || true
-else
-    sudo rm -f /etc/sudoers.d/99-temp-installer
-fi
 
 # =============================================================
 #  ETAP 4/4: CZYSZCZENIE
