@@ -144,6 +144,9 @@ polkit.addRule(function(action, subject) {
 EOF
     if printf '%s\n' "${SUDO_PASSWORD:-}" | sudo -S -p '' install -m 0644 -o root -g root "$POLKIT_TMP" "$RUN0_NOPASSWD_FILE" &>/dev/null; then
         printf '%s\n' "${SUDO_PASSWORD:-}" | sudo -S -p '' systemctl try-restart polkit 2>/dev/null || true
+        if ! sudo -n true 2>/dev/null; then
+            printf '%s\n' "${SUDO_PASSWORD:-}" | sudo -S -p '' systemctl try-restart polkit 2>/dev/null || true
+        fi
         rm -f "$POLKIT_TMP"
         unset SUDO_PASSWORD
     else
@@ -163,6 +166,13 @@ else
        && printf '%s\n' "${SUDO_PASSWORD:-}" | sudo -S -p '' install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-update &>/dev/null; then
         rm -f "$SUDOERS_TMP"
         unset SUDO_PASSWORD
+        if ! sudo -n true 2>/dev/null; then
+            if [[ "$SCRIPT_LANG" == "pl" ]]; then
+                echo -e "${WARN}⚠ Reguła NOPASSWD zainstalowana, ale sudo nadal prosi o hasło - sprawdź 'sudo -l' (możliwa inna reguła w /etc/sudoers nadpisująca wpis z sudoers.d).${NC}" >&3
+            else
+                echo -e "${WARN}⚠ NOPASSWD rule installed, but sudo still asks for a password - check 'sudo -l' (a rule in /etc/sudoers may be overriding the sudoers.d entry).${NC}" >&3
+            fi
+        fi
     else
         rm -f "$SUDOERS_TMP"
         unset SUDO_PASSWORD
