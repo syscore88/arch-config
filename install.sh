@@ -405,7 +405,7 @@ show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
 SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
     gcc clang llvm make cmake meson ninja just firefox firefox-i18n-pl
-    mesa qt6-tools obsidian obsidian-icon-theme
+    mesa qt6-tools ghostwriter
     python-pip python-tqdm python-defusedxml python-packaging
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
