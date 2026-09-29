@@ -233,10 +233,15 @@ show_progress 0 $TOTAL_STEPS "$MSG_PHASE_1"
 
 disable_packagekit
 
+pkg_installed() {
+    pacman -Qq "$1" &>/dev/null
+}
+
 install_pacman_pkgs() {
     wait_for_pacman_lock
     local valid_pkgs=()
     for pkg in "$@"; do
+        pkg_installed "$pkg" && continue
         if pacman -Si "$pkg" &>/dev/null; then
             valid_pkgs+=("$pkg")
         else
@@ -252,6 +257,7 @@ install_yay_pkgs() {
     wait_for_pacman_lock
     local valid_pkgs=()
     for pkg in "$@"; do
+        pkg_installed "$pkg" && continue
         if yay -Si "$pkg" &>/dev/null; then
             valid_pkgs+=("$pkg")
         else
@@ -294,7 +300,7 @@ if command -v lspci &>/dev/null; then
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
         for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
-            sudo pacman -S --needed --noconfirm "$pkg" || true
+            pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
         done
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
@@ -306,7 +312,7 @@ if command -v lspci &>/dev/null; then
     fi
 else
     for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
-        sudo pacman -S --needed --noconfirm "$pkg" || true
+        pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
     done
 fi
 
@@ -378,7 +384,7 @@ if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
     sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf
 fi
 wait_for_pacman_lock
-sudo pacman -S --noconfirm cups || true
+pkg_installed cups || sudo pacman -S --noconfirm cups || true
 
 sudo mkdir -p /etc/NetworkManager/conf.d
 echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
@@ -461,7 +467,7 @@ show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
 sudo flatpak update --appstream || true
-sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
+flatpak info com.github.tchx84.Flatseal &>/dev/null || sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
 
 show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 
