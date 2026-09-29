@@ -328,7 +328,7 @@ fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb zbar kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager totem pragha transmission-qt transmission-gtk exaile mpv"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb zbar kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager totem pragha transmission-qt transmission-gtk exaile mpv juk"
 wait_for_pacman_lock
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 for pkg in $INSTALLED_PACKAGES; do
@@ -357,9 +357,9 @@ EOF
 fi
 rm -rf ~/.config/akonadi* ~/.config/kmail* ~/.config/kontact* ~/.config/korganizer* ~/.config/kaddressbook* ~/.config/akregator* ~/.config/emailidentities ~/.config/mailtransports
 rm -rf ~/.cache/akonadi* ~/.cache/kmail* ~/.cache/kontact* ~/.cache/korganizer* ~/.cache/kaddressbook* ~/.cache/akregator* ~/.cache/konqueror*
-rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,evolution,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv}
-rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,evolution,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv}
-rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,evolution,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv}
+rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,evolution,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv,juk}
+rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,evolution,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv,juk}
+rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,evolution,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv,juk}
 
 show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
 
