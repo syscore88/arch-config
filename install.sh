@@ -330,7 +330,7 @@ show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
 TO_REMOVE=(
 htop nano konqueror plasma-browser-integration plasma-vault
-krdp krfb zbar kontact kmail kontrast plasma-welcome imagemagick
+KRFB kontact kmail kontrast plasma-welcome imagemagick
 kaddressbook kdepim-runtime akonadi akregator korganizer 
 gnome-software epiphany decibels rhythmbox showtime cosmic-store
 cosmic-player parole gnome-calendar gnome-clocks gnome-music
