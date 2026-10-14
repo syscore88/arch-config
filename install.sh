@@ -423,7 +423,7 @@ SYSTEM_PKGS=(
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
-    krita krita-plugin-gmic gimp gmic cdemu-client cdemu-daemon vhba-module
+    krita krita-plugin-gmic gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
     discord telegram-desktop qbittorrent
@@ -508,7 +508,7 @@ show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
 restore_packagekit
 
-CMDLINE="quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles"
+CMDLINE="quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles mitigations=off"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
 
 BOOT_METHODS_FOUND=()
