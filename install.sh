@@ -416,20 +416,19 @@ show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
 
 SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
-    gcc clang llvm make cmake meson ninja just firefox firefox-i18n-pl
-    mesa qt6-tools ghostwriter
+    gcc clang llvm make cmake meson ninja just firefox firefox-i18n-pl    
     python-pip python-tqdm python-defusedxml python-packaging
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
-    zsh-syntax-highlighting zsh-autosuggestions
+    zsh-syntax-highlighting zsh-autosuggestions ghostwriter
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
-    krita krita-plugin-gmic gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
+    gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
-    discord telegram-desktop qbittorrent
-    libreoffice-fresh libreoffice-fresh-pl hunspell-pl
+    discord telegram-desktop qbittorrentmesa qt6-tools 
+    libreoffice libreoffice-pl hunspell-pl krita krita-plugin-gmic
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast
     virt-manager qemu-desktop libvirt edk2-ovmf
