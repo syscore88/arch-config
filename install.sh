@@ -288,7 +288,7 @@ if command -v lspci &>/dev/null; then
     GPU_INFO=$(lspci | grep -i -E "vga|3d" || true)
 
     echo "$GPU_INFO" | grep -qi "nvidia"      && GPU_VENDORS+=("nvidia")
-    echo "$GPU_INFO" | grep -qi -E "amd|ati"  && GPU_VENDORS+=("amd")
+    echo "$GPU_INFO" | grep -qi -E "\b(amd|ati)\b|advanced micro devices|radeon" && GPU_VENDORS+=("amd")
     echo "$GPU_INFO" | grep -qi "intel"       && GPU_VENDORS+=("intel")
 
     TOTAL_KNOWN=${#GPU_VENDORS[@]}
