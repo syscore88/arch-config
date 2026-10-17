@@ -428,7 +428,7 @@ SYSTEM_PKGS=(
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
     discord telegram-desktop qbittorrentmesa qt6-tools 
-    libreoffice libreoffice-pl hunspell-pl krita krita-plugin-gmic
+    libreoffice libreoffice-pl hunspell-pl krita
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast
     virt-manager qemu-desktop libvirt edk2-ovmf
