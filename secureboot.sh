@@ -10,14 +10,15 @@ die()  { echo "${RED}[x]${RST} $*" >&2; exit 1; }
 ENROLL_FLAGS="-m"
 MODE=""
 LABEL="Arch Linux"
+GRUB_ID="GRUB"
 
 usage() {
     cat <<EOF
 Użycie: sudo $0 [opcje]
-  --mode=systemd-boot|efistub   wymuś tryb (domyślnie autodetekcja)
-  --label=NAZWA                 etykieta wpisu EFISTUB (domyślnie "Arch Linux")
-  --no-microsoft                nie dodawaj kluczy Microsoft
-  -h, --help                    pomoc
+  --mode=systemd-boot|grub|efistub   wymuś tryb (domyślnie autodetekcja)
+  --label=NAZWA                      etykieta wpisu EFISTUB (domyślnie "Arch Linux")
+  --no-microsoft                     nie dodawaj kluczy Microsoft
+  -h, --help                         pomoc
 EOF
 }
 
@@ -32,7 +33,7 @@ for arg in "$@"; do
 done
 
 case "$MODE" in
-    ""|systemd-boot|efistub) ;;
+    ""|systemd-boot|grub|efistub) ;;
     *) die "Nieprawidłowy tryb: $MODE" ;;
 esac
 
@@ -69,6 +70,12 @@ detect_mode() {
         echo systemd-boot
         return 0
     fi
+    if command -v grub-install >/dev/null 2>&1; then
+        if compgen -G "$ESP/EFI/*/grubx64.efi" >/dev/null || efibootmgr -v 2>/dev/null | grep -qi 'grubx64'; then
+            echo grub
+            return 0
+        fi
+    fi
     if efibootmgr -v 2>/dev/null | grep -qiE 'vmlinuz|EFI.Linux.*\.efi'; then
         echo efistub
         return 0
@@ -81,7 +88,7 @@ detect_mode() {
 }
 
 if [[ -z "$MODE" ]]; then
-    MODE=$(detect_mode) || die "Nie wykryto systemd-boot ani EFISTUB. Użyj --mode=."
+    MODE=$(detect_mode) || die "Nie wykryto systemd-boot, GRUB ani EFISTUB. Użyj --mode=."
     info "Wykryty tryb: $MODE"
 else
     info "Wymuszony tryb: $MODE"
@@ -127,6 +134,23 @@ build_cmdline() {
 
 entry_exists() {
     efibootmgr -v 2>/dev/null | grep -qiF -- "$1"
+}
+
+configure_grub() {
+    local f
+
+    pacman -S --needed --noconfirm grub
+
+    info "Instalacja GRUB na ESP ($ESP)..."
+    grub-install --target=x86_64-efi --efi-directory="$ESP" \
+        --bootloader-id="$GRUB_ID" --modules="tpm" --disable-shim-lock
+
+    info "Generowanie konfiguracji GRUB..."
+    grub-mkconfig -o /boot/grub/grub.cfg
+
+    for f in "$ESP"/EFI/*/grubx64.efi "$ESP"/EFI/BOOT/BOOTX64.EFI; do
+        sign_if_exists "$f"
+    done
 }
 
 configure_efistub() {
@@ -179,16 +203,22 @@ configure_efistub() {
     done
 }
 
-if [[ "$MODE" == "systemd-boot" ]]; then
-    if ! bootctl is-installed >/dev/null 2>&1; then
-        info "Instalacja systemd-boot..."
-        bootctl install
-    fi
-    sign_if_exists "$ESP/EFI/systemd/systemd-bootx64.efi"
-    sign_if_exists "$ESP/EFI/BOOT/BOOTX64.EFI"
-else
-    configure_efistub
-fi
+case "$MODE" in
+    systemd-boot)
+        if ! bootctl is-installed >/dev/null 2>&1; then
+            info "Instalacja systemd-boot..."
+            bootctl install
+        fi
+        sign_if_exists "$ESP/EFI/systemd/systemd-bootx64.efi"
+        sign_if_exists "$ESP/EFI/BOOT/BOOTX64.EFI"
+        ;;
+    grub)
+        configure_grub
+        ;;
+    efistub)
+        configure_efistub
+        ;;
+esac
 
 info "Podpisywanie kerneli i UKI..."
 for dir in "$ESP" /boot; do
@@ -210,13 +240,20 @@ else
     warn "  sudo sbctl enroll-keys $ENROLL_FLAGS"
 fi
 
-if [[ "$MODE" == "systemd-boot" ]]; then
-    systemctl enable --now systemd-boot-update.service 2>/dev/null || \
-        warn "Nie udało się włączyć systemd-boot-update.service."
-else
-    warn "EFISTUB: linia poleceń kernela leży w NVRAM i nie jest chroniona przez Secure Boot."
-    warn "Dla pełnej ochrony użyj UKI (mkinitcpio/dracut) w $ESP/EFI/Linux."
-fi
+case "$MODE" in
+    systemd-boot)
+        systemctl enable --now systemd-boot-update.service 2>/dev/null || \
+            warn "Nie udało się włączyć systemd-boot-update.service."
+        ;;
+    grub)
+        warn "GRUB: plik grub.cfg nie jest chroniony przez Secure Boot."
+        warn "Po aktualizacji GRUB uruchom ponownie ten skrypt, aby odnowić instalację i podpisy."
+        ;;
+    efistub)
+        warn "EFISTUB: linia poleceń kernela leży w NVRAM i nie jest chroniona przez Secure Boot."
+        warn "Dla pełnej ochrony użyj UKI (mkinitcpio/dracut) w $ESP/EFI/Linux."
+        ;;
+esac
 
 echo
 info "Weryfikacja podpisów:"
