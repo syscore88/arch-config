@@ -509,7 +509,7 @@ show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
 restore_packagekit
 
-CMDLINE="quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles mitigations=off"
+CMDLINE="quiet splash loglevel=3 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles mitigations=off split_lock_detect=off"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
 
 BOOT_METHODS_FOUND=()
