@@ -1,6 +1,6 @@
 #!/bin/bash
 # =====================================
-#  SKRYPT INSTALACYJNY - Arch Linux
+#  SKRYPT KONFIGURACYJNY - Arch Linux
 # =====================================
 
 set -Eeuo pipefail
