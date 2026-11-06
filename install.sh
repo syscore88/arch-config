@@ -817,17 +817,6 @@ fi
 
 show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
 
-if [ -f /etc/default/ufw ]; then
-    sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-fi
-
-if command -v ufw &>/dev/null; then
-    sudo ufw allow ssh || true
-    sudo systemctl enable --now ufw || true
-    sudo ufw allow in  on virbr0 || true
-    sudo ufw allow out on virbr0 || true
-fi
-
 sudo systemctl enable --now geoclue.service || true
 sudo systemctl enable --now ananicy-cpp || true
 sudo systemctl enable --now fstrim.timer || true
@@ -835,12 +824,44 @@ sudo systemctl enable --now bluetooth || true
 echo "options btusb enable_autosuspend=0" | sudo tee /etc/modprobe.d/btusb.conf
 sudo systemctl enable --now libvirtd || true
 
+LIBVIRT_NET="192.168.122.0/24"
+if ip -4 -o addr show 2>/dev/null | awk '$2 != "virbr0" && $4 ~ /^192\.168\.122\./ {found=1} END {exit !found}'; then
+    LIBVIRT_NET="192.168.150.0/24"
+fi
+
 if ! sudo virsh net-info default &>/dev/null; then
     sudo virsh net-define /usr/share/libvirt/networks/default.xml || true
 fi
 
+if [[ "$LIBVIRT_NET" == "192.168.150.0/24" ]]; then
+    LIBVIRT_NET_XML="$(mktemp)"
+    if sudo virsh net-dumpxml default --inactive 2>/dev/null > "$LIBVIRT_NET_XML" && grep -q '192\.168\.122\.' "$LIBVIRT_NET_XML"; then
+        sed -i 's/192\.168\.122\./192.168.150./g' "$LIBVIRT_NET_XML"
+        sudo virsh net-destroy default 2>/dev/null || true
+        sudo virsh net-undefine default 2>/dev/null || true
+        sudo virsh net-define "$LIBVIRT_NET_XML" || true
+    fi
+    rm -f "$LIBVIRT_NET_XML"
+fi
+
 sudo virsh net-start default 2>/dev/null || true
 sudo virsh net-autostart default || true
+
+if command -v ufw &>/dev/null; then
+    [[ -f /etc/default/ufw ]] && sudo sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw || true
+    sudo ufw --force reset || true
+    sudo ufw default deny incoming || true
+    sudo ufw default allow outgoing || true
+    sudo ufw allow in  on virbr0 || true
+    sudo ufw allow out on virbr0 || true
+    sudo ufw allow from "$LIBVIRT_NET" || true
+    if pkg_installed openssh || [[ -x /usr/bin/sshd ]] || [[ -x /usr/sbin/sshd ]] \
+        || systemctl is-active --quiet sshd 2>/dev/null; then
+        sudo ufw allow ssh || true
+    fi
+    sudo ufw --force enable || true
+    sudo systemctl enable --now ufw || true
+fi
 
 dconf load /org/virt-manager/virt-manager/ <<'EOF'
 [/]
