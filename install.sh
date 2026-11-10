@@ -296,7 +296,7 @@ if command -v lspci &>/dev/null; then
 
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
-        for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
+        for pkg in mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-icd-loader lib32-vulkan-icd-loader; do
             pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
         done
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
@@ -308,7 +308,7 @@ if command -v lspci &>/dev/null; then
         GPU_TYPE="${GPU_VENDORS[0]}"
     fi
 else
-    for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
+    for pkg in mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-icd-loader lib32-vulkan-icd-loader; do
         pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
     done
 fi
@@ -440,9 +440,9 @@ SYSTEM_PKGS=(
 
 for vendor in "${GPU_VENDORS[@]}"; do
     case "$vendor" in
-        "nvidia") SYSTEM_PKGS+=(lib32-nvidia-utils lib32-vulkan-icd-loader) ;;
-        "amd")    SYSTEM_PKGS+=(lib32-vulkan-radeon lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
-        "intel")  SYSTEM_PKGS+=(lib32-libva-intel-driver lib32-vulkan-intel lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
+        "nvidia") SYSTEM_PKGS+=(libva-nvidia-driver lib32-nvidia-utils lib32-vulkan-icd-loader) ;;
+        "amd")    SYSTEM_PKGS+=(mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
+        "intel")  SYSTEM_PKGS+=(intel-media-driver mesa lib32-mesa vulkan-intel lib32-vulkan-intel lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
     esac
 done
 
