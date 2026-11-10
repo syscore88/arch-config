@@ -440,8 +440,8 @@ SYSTEM_PKGS=(
 
 for vendor in "${GPU_VENDORS[@]}"; do
     case "$vendor" in
-        "nvidia") SYSTEM_PKGS+=(libva-nvidia-driver lib32-nvidia-utils lib32-vulkan-icd-loader opencl-nvidia lib32-opencl-nvidia) ;;
-        "amd")    SYSTEM_PKGS+=(mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader opencl-mesa lib32-opencl-mesa) ;;
+        "nvidia") SYSTEM_PKGS+=(libva-nvidia-driver lib32-nvidia-utils lib32-vulkan-icd-loader opencl-nvidia) ;;
+        "amd")    SYSTEM_PKGS+=(mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader opencl-mesa) ;;
         "intel")  SYSTEM_PKGS+=(intel-media-driver mesa lib32-mesa vulkan-intel lib32-vulkan-intel lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader intel-compute-runtime) ;;
     esac
 done
