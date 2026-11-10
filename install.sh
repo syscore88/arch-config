@@ -427,8 +427,8 @@ SYSTEM_PKGS=(
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
-    gst-plugins-good gst-plugins-bad gst-plugins-ugly
-    discord telegram-desktop qbittorrentmesa qt6-tools 
+    gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav ffmpeg x264
+    discord telegram-desktop qbittorrent mesa qt6-tools 
     libreoffice libreoffice-pl hunspell-pl krita
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast
