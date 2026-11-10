@@ -285,6 +285,11 @@ install_pacman_pkgs dconf
 GPU_TYPE="unknown"
 HYBRID_GPU=false
 GPU_VENDORS=()
+GPU_UNKNOWN_PKGS=(
+    mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers
+    vulkan-icd-loader lib32-vulkan-icd-loader opencl-mesa lib32-opencl-mesa
+    vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast
+)
 if command -v lspci &>/dev/null; then
     GPU_INFO=$(lspci | grep -i -E "vga|3d" || true)
 
@@ -296,7 +301,7 @@ if command -v lspci &>/dev/null; then
 
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
-        for pkg in mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-icd-loader lib32-vulkan-icd-loader opencl-mesa lib32-opencl-mesa; do
+        for pkg in "${GPU_UNKNOWN_PKGS[@]}"; do
             pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
         done
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
@@ -308,7 +313,7 @@ if command -v lspci &>/dev/null; then
         GPU_TYPE="${GPU_VENDORS[0]}"
     fi
 else
-    for pkg in mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-icd-loader lib32-vulkan-icd-loader opencl-mesa lib32-opencl-mesa; do
+    for pkg in "${GPU_UNKNOWN_PKGS[@]}"; do
         pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
     done
 fi
@@ -427,22 +432,26 @@ SYSTEM_PKGS=(
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
-    gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav ffmpeg x264
-    discord telegram-desktop qbittorrent mesa qt6-tools 
+    discord telegram-desktop qbittorrent
     libreoffice libreoffice-pl hunspell-pl krita
     wine-staging winetricks gamemode gamescope mangohud vkd3d
-    vulkan-dzn vulkan-gfxstream vulkan-swrast
     virt-manager qemu-desktop libvirt edk2-ovmf
-    lib32-libxrandr lib32-libxrender lib32-gamemode
-    lib32-vulkan-swrast lib32-vkd3d lib32-alsa-plugins
-    lib32-libpulse lib32-mangohud lib32-pipewire
+)
+
+PKGS_32BIT=(
+    lib32-libxrandr lib32-libxrender lib32-gamemode lib32-vkd3d
+    lib32-alsa-plugins lib32-libpulse lib32-mangohud lib32-pipewire
+)
+
+PKGS_CODECS=(
+    gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav ffmpeg x264
 )
 
 for vendor in "${GPU_VENDORS[@]}"; do
     case "$vendor" in
-        "nvidia") SYSTEM_PKGS+=(libva-nvidia-driver lib32-nvidia-utils lib32-vulkan-icd-loader opencl-nvidia) ;;
-        "amd")    SYSTEM_PKGS+=(mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader opencl-mesa) ;;
-        "intel")  SYSTEM_PKGS+=(intel-media-driver mesa lib32-mesa vulkan-intel lib32-vulkan-intel lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader intel-compute-runtime) ;;
+        "nvidia") SYSTEM_PKGS+=(libva-nvidia-driver lib32-nvidia-utils opencl-nvidia mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
+        "amd")    SYSTEM_PKGS+=(mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils vulkan-icd-loader lib32-vulkan-icd-loader opencl-mesa vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
+        "intel")  SYSTEM_PKGS+=(intel-media-driver mesa lib32-mesa vulkan-intel lib32-vulkan-intel lib32-vulkan-mesa-layers lib32-mesa-utils vulkan-icd-loader lib32-vulkan-icd-loader intel-compute-runtime vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
     esac
 done
 
@@ -451,6 +460,8 @@ if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
 fi
 
 install_pacman_pkgs "${SYSTEM_PKGS[@]}"
+install_pacman_pkgs "${PKGS_32BIT[@]}"
+install_pacman_pkgs "${PKGS_CODECS[@]}"
 
 sudo depmod -a &>/dev/null || true
 
