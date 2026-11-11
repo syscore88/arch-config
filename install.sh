@@ -433,7 +433,7 @@ SYSTEM_PKGS=(
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     discord telegram-desktop qbittorrent
-    libreoffice libreoffice-pl hunspell-pl krita
+    libreoffice-fresh libreoffice-fresh-pl hunspell-pl krita
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     virt-manager qemu-desktop libvirt edk2-ovmf
 )
