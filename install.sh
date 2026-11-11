@@ -341,8 +341,9 @@ kontact kmail kontrast plasma-welcome imagemagick
 kaddressbook kdepim-runtime akonadi akregator korganizer 
 gnome-software epiphany decibels rhythmbox showtime cosmic-store
 cosmic-player parole gnome-calendar gnome-clocks gnome-music
-gnome-user-docs gnome-contacts gnome-maps gnome-weather evolution
-evolution-ews evolution-bogofilter evolution-spamassassin 
+gnome-user-docs gnome-contacts gnome-maps gnome-weather 
+evolution evolution-ews evolution-data-server 
+evolution-bogofilter evolution-spamassassin
 kwalletmanager elisa dragon transmission-gtk exaile mpv juk yelp
 totem pragha transmission-qt discover
 )
