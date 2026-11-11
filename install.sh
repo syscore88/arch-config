@@ -166,7 +166,11 @@ TOTAL_STEPS=12
 FAILED_PACKAGES=()
 
 if [[ "$EUID" -eq 0 ]]; then
-    echo -e "${ERR}[X] Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3
+    if [[ "$SCRIPT_LANG" == "pl" ]]; then
+        echo -e "${ERR}[X] Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3
+    else
+        echo -e "${ERR}[X] Do not run this script as root. Run as a normal user with sudo.${NC}" >&3
+    fi
     exit 1
 fi
 
@@ -214,7 +218,11 @@ else
         sudo visudo -cf "$SUDOERS_TMP" &>/dev/null && sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99_nopasswd || true
     else
         rm -f "$SUDOERS_TMP"
-        echo -e "${ERR}[X] Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
+        if [[ "$SCRIPT_LANG" == "pl" ]]; then
+            echo -e "${ERR}[X] Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
+        else
+            echo -e "${ERR}[X] Invalid sudoers rule syntax - aborting.${NC}" >&3
+        fi
         exit 1
     fi
     rm -f "$SUDOERS_TMP"
@@ -280,7 +288,7 @@ retry_cmd() {
     done
 }
 
-install_pacman_pkgs dconf
+install_pacman_pkgs dconf pciutils curl
 
 GPU_TYPE="unknown"
 HYBRID_GPU=false
@@ -291,7 +299,7 @@ GPU_UNKNOWN_PKGS=(
     vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast
 )
 if command -v lspci &>/dev/null; then
-    GPU_INFO=$(lspci | grep -i -E "vga|3d" || true)
+    GPU_INFO=$(lspci | grep -i -E "vga|3d|display" || true)
 
     echo "$GPU_INFO" | grep -qi "nvidia"      && GPU_VENDORS+=("nvidia")
     echo "$GPU_INFO" | grep -qi -E "\b(amd|ati)\b|advanced micro devices|radeon" && GPU_VENDORS+=("amd")
@@ -301,9 +309,7 @@ if command -v lspci &>/dev/null; then
 
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
-        for pkg in "${GPU_UNKNOWN_PKGS[@]}"; do
-            pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
-        done
+        install_pacman_pkgs "${GPU_UNKNOWN_PKGS[@]}"
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
         GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
@@ -313,9 +319,7 @@ if command -v lspci &>/dev/null; then
         GPU_TYPE="${GPU_VENDORS[0]}"
     fi
 else
-    for pkg in "${GPU_UNKNOWN_PKGS[@]}"; do
-        pkg_installed "$pkg" || sudo pacman -S --needed --noconfirm "$pkg" || true
-    done
+    install_pacman_pkgs "${GPU_UNKNOWN_PKGS[@]}"
 fi
 
 if [ -f "$SCRIPT_DIR/.update.sh" ]; then
@@ -341,11 +345,10 @@ kontact kmail kontrast plasma-welcome imagemagick
 kaddressbook kdepim-runtime akonadi akregator korganizer 
 gnome-software epiphany decibels rhythmbox showtime cosmic-store
 cosmic-player parole gnome-calendar gnome-clocks gnome-music
-gnome-user-docs gnome-contacts gnome-maps gnome-weather 
-evolution evolution-ews evolution-data-server 
-evolution-bogofilter evolution-spamassassin
+gnome-user-docs gnome-contacts gnome-maps gnome-weather evolution
+evolution-ews evolution-bogofilter evolution-spamassassin evolution-data-server 
 kwalletmanager elisa dragon transmission-gtk exaile mpv juk yelp
-totem pragha transmission-qt discover
+totem pragha transmission-qt discover "evolution*"
 )
 wait_for_pacman_lock
 INSTALLED_PACKAGES=$(pacman -Qq "${TO_REMOVE[@]}" 2>/dev/null || true)
@@ -396,8 +399,7 @@ fi
 if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
     sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf
 fi
-wait_for_pacman_lock
-pkg_installed cups || sudo pacman -S --noconfirm cups || true
+install_pacman_pkgs cups
 
 sudo mkdir -p /etc/NetworkManager/conf.d
 echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
@@ -437,6 +439,7 @@ SYSTEM_PKGS=(
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl krita
     wine-staging winetricks gamemode gamescope mangohud vkd3d
     virt-manager qemu-desktop libvirt edk2-ovmf
+    qt6-base qt6-declarative
 )
 
 PKGS_32BIT=(
@@ -483,10 +486,13 @@ pkill -f gcdemu 2>/dev/null || true
 
 show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 
-sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
-sudo flatpak update --appstream || true
-flatpak info com.github.tchx84.Flatseal &>/dev/null || sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
-flatpak info it.mijorus.gearlever &>/dev/null || sudo flatpak install -y flathub it.mijorus.gearlever || true
+if command -v flatpak &>/dev/null; then
+    sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+    sudo flatpak update --appstream || true
+    for fp_app in com.github.tchx84.Flatseal it.mijorus.gearlever; do
+        flatpak info "$fp_app" &>/dev/null || sudo flatpak install -y flathub "$fp_app" || FAILED_PACKAGES+=("flatpak:$fp_app")
+    done
+fi
 
 show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 
@@ -494,19 +500,25 @@ if ! command -v yay &>/dev/null; then
     sudo timedatectl set-ntp true &>/dev/null || true
 
     rm -rf /tmp/yay
+    YAY_SRC_OK=1
     if ! retry_cmd 5 git clone https://aur.archlinux.org/yay.git /tmp/yay; then
         rm -rf /tmp/yay
         mkdir -p /tmp/yay
-        if ! retry_cmd 5 curl -4 -fsSL \
+        if retry_cmd 5 curl -4 -fsSL \
             "https://aur.archlinux.org/cgit/aur.git/snapshot/yay.tar.gz" \
             -o /tmp/yay.tar.gz; then
-            exit 1
+            tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1 || YAY_SRC_OK=0
+        else
+            YAY_SRC_OK=0
         fi
-        tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1
         rm -f /tmp/yay.tar.gz
     fi
-    (cd /tmp/yay && makepkg -si --noconfirm) || true
+    if [ "$YAY_SRC_OK" -eq 1 ]; then
+        (cd /tmp/yay && makepkg -si --noconfirm) || true
+    fi
+    rm -rf /tmp/yay
 fi
+command -v yay &>/dev/null || FAILED_PACKAGES+=("yay")
 
 yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false || true
 
@@ -833,7 +845,7 @@ sudo systemctl enable --now geoclue.service || true
 sudo systemctl enable --now ananicy-cpp || true
 sudo systemctl enable --now fstrim.timer || true
 sudo systemctl enable --now bluetooth || true
-echo "options btusb enable_autosuspend=0" | sudo tee /etc/modprobe.d/btusb.conf
+echo "options btusb enable_autosuspend=0" | sudo tee /etc/modprobe.d/btusb.conf > /dev/null
 sudo systemctl enable --now libvirtd || true
 
 LIBVIRT_NET="192.168.122.0/24"
@@ -857,7 +869,7 @@ if [[ "$LIBVIRT_NET" == "192.168.150.0/24" ]]; then
 fi
 
 sudo virsh net-start default 2>/dev/null || true
-sudo virsh net-autostart default || true
+sudo virsh net-autostart default 2>/dev/null || true
 
 if command -v ufw &>/dev/null; then
     [[ -f /etc/default/ufw ]] && sudo sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw || true
@@ -875,7 +887,8 @@ if command -v ufw &>/dev/null; then
     sudo systemctl enable --now ufw || true
 fi
 
-dconf load /org/virt-manager/virt-manager/ <<'EOF'
+if command -v dconf &>/dev/null; then
+    dconf load /org/virt-manager/virt-manager/ <<'EOF'
 [/]
 manager-window-height=297
 manager-window-width=478
@@ -909,14 +922,12 @@ enable-net-poll=true
 [vmlist-fields]
 disk-usage=false
 network-traffic=false
-
-autoconnect=1
-vm-window-size=(1280, 842)
 EOF
+fi
 
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStartSec=.*/DefaultTimeoutStartSec=3s/' /etc/systemd/system.conf
-sudo systemctl disable NetworkManager-wait-online.service || true
+sudo systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 sudo journalctl --vacuum-time=2d || true
 
 for grp in libvirt kvm; do
@@ -926,16 +937,19 @@ done
 if command -v zsh &>/dev/null; then
     sudo chsh -s /usr/bin/zsh "$CURRENT_USER" || true
 
-    [ ! -d "$HOME/.oh-my-zsh" ] && \
+    if [ ! -d "$HOME/.oh-my-zsh" ]; then
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" \
-        "" --unattended || true
+            "" --unattended || true
+        [ -d "$HOME/.oh-my-zsh" ] || FAILED_PACKAGES+=("oh-my-zsh")
+    fi
 
     P10K_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
-    [ ! -d "$P10K_DIR" ] && \
-        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$P10K_DIR" || true
+    if [ ! -d "$P10K_DIR" ]; then
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$P10K_DIR" || FAILED_PACKAGES+=("powerlevel10k")
+    fi
 
     if [ -f ~/.zshrc ]; then
-        sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc
+        sed -i 's|^ZSH_THEME=.*|ZSH_THEME="powerlevel10k/powerlevel10k"|' ~/.zshrc
         sed -i 's/^plugins=(.*/plugins=(git sudo systemd archlinux)/' ~/.zshrc
 
         SHELL_LOCALE="${LANG:-${LC_ALL:-${LC_MESSAGES:-en_US.UTF-8}}}"
