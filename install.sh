@@ -348,7 +348,7 @@ cosmic-player parole gnome-calendar gnome-clocks gnome-music
 gnome-user-docs gnome-contacts gnome-maps gnome-weather evolution
 evolution-ews evolution-bogofilter evolution-spamassassin evolution-data-server 
 kwalletmanager elisa dragon transmission-gtk exaile mpv juk yelp
-totem pragha transmission-qt discover krdc krfb
+totem pragha transmission-qt discover 
 )
 wait_for_pacman_lock
 INSTALLED_PACKAGES=$(pacman -Qq "${TO_REMOVE[@]}" 2>/dev/null || true)
