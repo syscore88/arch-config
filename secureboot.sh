@@ -289,7 +289,7 @@ for f in "${to_sign[@]}"; do
     sign_if_exists "$f"
 done
 
-sudo sbctl verify 2>/dev/null | grep -E '✗|not signed' | awk '{print $2}' | while read -r f; do
+sudo sbctl --esp "$ESP" verify 2>/dev/null | grep -E '✗|not signed' | awk '{print $2}' | while read -r f; do
     sudo test -f "$f" && sudo sbctl sign -s "$f" || true
 done || true
 
@@ -326,7 +326,7 @@ esac
 
 echo
 info "Weryfikacja podpisów:" "Verifying signatures:"
-sudo sbctl verify || true
+sudo sbctl --esp "$ESP" verify || true
 echo
 sudo sbctl status || true
 echo
