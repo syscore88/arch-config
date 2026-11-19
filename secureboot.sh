@@ -340,6 +340,12 @@ else
 fi
 echo
 
+if [[ "$MODE" == "grub" ]]; then
+    warn "Po każdej aktualizacji pakietu grub trzeba ponownie uruchomić grub-install i podpisać nowy plik grubx64.efi przez sbctl sign-all." \
+         "After every grub package update, you must run grub-install again and sign the new grubx64.efi file with sbctl sign-all."
+    echo
+fi
+
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
     RESTART_PROMPT="Czy chcesz teraz zrestartować system? [T/N]: "
 else
