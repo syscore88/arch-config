@@ -171,7 +171,7 @@ if ! sudo -n true 2>/dev/null; then
     exit 1
 fi
 
-TOTAL_STEPS=14
+TOTAL_STEPS=15
 STEP=0
 show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 
@@ -185,6 +185,12 @@ STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 
 if command -v cinnamon-spice-updater &> /dev/null; then
     cinnamon-spice-updater --update-all
+fi
+STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
+
+if command -v fwupdmgr &> /dev/null; then
+    sudo fwupdmgr refresh --force
+    sudo fwupdmgr update -y
 fi
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 
