@@ -489,7 +489,7 @@ show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 if command -v flatpak &>/dev/null; then
     sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
     sudo flatpak update --appstream || true
-    for fp_app in com.github.tchx84.Flatseal it.mijorus.gearlever; do
+    for fp_app in com.github.tchx84.Flatseal; do
         flatpak info "$fp_app" &>/dev/null || sudo flatpak install -y flathub "$fp_app" || FAILED_PACKAGES+=("flatpak:$fp_app")
     done
 fi
