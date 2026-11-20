@@ -432,7 +432,7 @@ SYSTEM_PKGS=(
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex libayatana-appindicator flatpak timeshift
     zsh-syntax-highlighting zsh-autosuggestions ghostwriter
-    vlc vlc-plugins-all libappimage handbrake xorg-xhost
+    vlc vlc-plugins-all libappimage handbrake 
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
     audacity qmmp mixxx kdenlive soundconverter
     discord telegram-desktop qbittorrent
