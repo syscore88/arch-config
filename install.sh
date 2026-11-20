@@ -430,7 +430,7 @@ SYSTEM_PKGS=(
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
-    bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
+    bluez-obex libayatana-appindicator flatpak timeshift
     zsh-syntax-highlighting zsh-autosuggestions ghostwriter
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
