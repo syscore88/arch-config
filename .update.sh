@@ -81,13 +81,13 @@ show_progress() {
 if [ "$SCRIPT_LANG" = "pl" ]; then
     MSG_TITLE="                  KONSERWACJA SYSTEMU                 "
     MSG_ASK_PASS="     Proszę podać hasło administratora (sudo):     "
-    MSG_PHASE_CLEAN_SYS="      Czyszczenie systemowe..."
+    MSG_PHASE_CLEAN_SYS="Czyszczenie ..."
     MSG_DONE="             KONSERWACJA SYSTEMU ZAKOŃCZONA!           "
     MSG_PRESS_ENTER="     Naciśnij Enter, aby zamknąć okno...        "
 else
     MSG_TITLE="                 SYSTEM MAINTENANCE                   "
     MSG_ASK_PASS="Please enter the administrator (sudo) password:"
-    MSG_PHASE_CLEAN_SYS="        System cleanup..."
+    MSG_PHASE_CLEAN_SYS="Cleanup..."
     MSG_DONE="             SYSTEM MAINTENANCE COMPLETE!              "
     MSG_PRESS_ENTER="     Press Enter to close this window...        "
 fi
