@@ -606,8 +606,10 @@ fi
 if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     BOOT_METHODS_FOUND+=("grub")
     sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
-    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" \
-        /etc/default/grub
+    if ! sgrep -q '^GRUB_CMDLINE_LINUX_DEFAULT=.*\bsplash\b' /etc/default/grub; then
+        sudo sed -i "/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/\"\$/ $CMDLINE\"/" /etc/default/grub
+        sudo sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ { s/="[[:space:]]*/="/; s/[[:space:]]\{2,\}/ /g }' /etc/default/grub
+    fi
     sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
 fi
 
@@ -743,8 +745,6 @@ if [[ " ${BOOT_METHODS_FOUND[*]} " != *" systemd-boot "* ]] && \
    command -v efibootmgr &>/dev/null; then
     sudo efibootmgr -t 0 &>/dev/null || true
 fi
-unset -f sgrep
-
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
 sudo plymouth-set-default-theme -R bgrt 2>/dev/null || true
@@ -1004,7 +1004,8 @@ else
     RESTART_PROMPT="Do you want to restart the system now? [Y/N]: "
 fi
 echo -en "${INFO}==> ${RESTART_PROMPT}${NC}" >&3
-read -r RESTART_CHOICE < /dev/tty
+RESTART_CHOICE=""
+read -r RESTART_CHOICE < /dev/tty || true
 case "$RESTART_CHOICE" in
     [YyTt]*)
         DO_REBOOT=1
