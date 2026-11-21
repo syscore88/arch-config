@@ -7,8 +7,7 @@ set -Eeuo pipefail
 export PATH="/usr/sbin:/sbin:$PATH"
 
 detect_system_lang() {
-    local sys_lang="${LANG:-}"
-    [[ -z "$sys_lang" ]] && sys_lang="${LC_ALL:-${LC_MESSAGES:-}}"
+    local sys_lang="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
     if [[ "$sys_lang" == pl* ]]; then
         echo "pl"
     else
@@ -26,36 +25,61 @@ NC='\033[0m'
 TMP_LOG="$(mktemp /tmp/install-log.XXXXXX)"
 LOG_FILE="$HOME/install_error_$(date +%Y%m%d_%H%M%S).log"
 
+# Stan używany przez trap EXIT - musi istnieć PRZED jego instalacją (set -u)
+FAILED_PACKAGES=()
+SUDOERS_TMP=""
+LIBVIRT_NET_XML=""
+SUDO_READY=0
+SUDO_KEEPALIVE_PID=""
+QUIET_WARNS=0
+RUN0_NOPASSWD_FILE="/etc/polkit-1/rules.d/51-run0-nopasswd.rules"
+TEMP_SUDOERS="/etc/sudoers.d/99-temp-installer"
+
 exec 3>&1
 exec >>"$TMP_LOG" 2>&1
 
 cleanup_on_exit() {
     local exit_code=$?
-    declare -F restore_packagekit >/dev/null && restore_packagekit || true
-    [ -n "${SUDO_KEEPALIVE_PID:-}" ] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
-    printf '\033[?7h' >&3
-    if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
-        echo -e "\n" >&3
-        cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true
-        if [ "$exit_code" -ne 0 ]; then
-            if [[ "$SCRIPT_LANG" == "pl" ]]; then
-                echo -e "${ERR}[X] Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}" >&3
-            else
-                echo -e "${ERR}[X] An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}" >&3
+    trap '' INT TERM HUP     # sprzątania nikt nie przerwie
+    trap - ERR
+    set +e                   # każdy krok wykona się mimo błędu poprzedniego
+
+    [ -n "${SUDO_KEEPALIVE_PID:-}" ] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
+    declare -F restore_packagekit >/dev/null && restore_packagekit
+
+    rm -f "$SUDOERS_TMP" "$LIBVIRT_NET_XML"
+
+    {
+        printf '\033[?7h'
+        if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
+            echo -e "\n"
+            cp -f "$TMP_LOG" "$LOG_FILE"
+            if [ "$exit_code" -ne 0 ]; then
+                if [[ "$SCRIPT_LANG" == "pl" ]]; then
+                    echo -e "${ERR}[X] Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}"
+                else
+                    echo -e "${ERR}[X] An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}"
+                fi
             fi
+        elif [ "${QUIET_WARNS:-0}" -eq 0 ]; then
+            rm -f "$LOG_FILE"    # czysty przebieg - nie zostawiaj logu "error"
+        else
+            cp -f "$TMP_LOG" "$LOG_FILE"   # ciche ostrzeżenia: zachowaj log, bez komunikatu w terminalu
         fi
-    fi
+    } >&3 2>/dev/null          # martwy terminal (SIGHUP) nie może przerwać sprzątania
     rm -f "$TMP_LOG"
+
     local do_reboot=0
     [ "$exit_code" -eq 0 ] && [ "${DO_REBOOT:-0}" = "1" ] && do_reboot=1
     if [ "${SUDO_READY:-0}" = "1" ]; then
         sudo sh -c 'rm -f "$1" "$2"; systemctl try-restart polkit 2>/dev/null; if [ "$3" = 1 ]; then systemctl reboot; fi' _ \
-            "${RUN0_NOPASSWD_FILE:-/etc/polkit-1/rules.d/51-run0-nopasswd.rules}" \
-            "/etc/sudoers.d/99-temp-installer" \
-            "$do_reboot"
+            "$RUN0_NOPASSWD_FILE" "$TEMP_SUDOERS" "$do_reboot"
     fi
 }
 trap cleanup_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 _pick_msg() { [[ "$SCRIPT_LANG" == "pl" ]] && echo "$1" || echo "$2"; }
 _log_write() { printf "\r\033[K" >&3; echo -e "$1" >&3; echo -e "$1"; cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true; }
@@ -63,6 +87,8 @@ log_info()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${INFO}==> $m${NC
 log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${SUCCESS}[OK] $m${NC}"; }
 log_err()   { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${ERR}[X] ERROR: $m${NC}"; }
 log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${WARN}[!] WARN: $m${NC}"; }
+# Ostrzeżenie tylko do logu - bez wypisywania w terminalu (nie psuje paska postępu)
+log_quiet() { local m; m="$(_pick_msg "$1" "$2")"; QUIET_WARNS=$((QUIET_WARNS + 1)); echo "[!] WARN: $m"; cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true; }
 
 trap 'log_err "Błąd w linii $LINENO. Polecenie: $BASH_COMMAND" "Error at line $LINENO. Command: $BASH_COMMAND"' ERR
 
@@ -163,7 +189,6 @@ else
 fi
 
 TOTAL_STEPS=12
-FAILED_PACKAGES=()
 
 if [[ "$EUID" -eq 0 ]]; then
     if [[ "$SCRIPT_LANG" == "pl" ]]; then
@@ -179,14 +204,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 printf '\033[?7h\n' >&3
 
-RUN0_NOPASSWD_FILE="/etc/polkit-1/rules.d/51-run0-nopasswd.rules"
 USE_RUN0=0
-if ! command -v visudo >/dev/null 2>&1 || sudo --version 2>/dev/null | grep -qi "run0"; then
+SUDO_VERSION_OUT="$(sudo --version 2>/dev/null || true)"
+if ! command -v visudo >/dev/null 2>&1 || grep -qi "run0" <<< "$SUDO_VERSION_OUT"; then
     USE_RUN0=1
 fi
 
-SUDO_READY=0
 if [[ "$USE_RUN0" -eq 1 ]]; then
+    SUDO_READY=1   # od teraz cleanup ma co sprzątać
     sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null << EOF
 polkit.addRule(function(action, subject) {
     if (subject.user == "$CURRENT_USER") {
@@ -195,9 +220,9 @@ polkit.addRule(function(action, subject) {
 });
 EOF
     sudo systemctl try-restart polkit 2>/dev/null || true
-    SUDO_READY=1
 else
     sudo -v
+    SUDO_READY=1   # od teraz cleanup ma co sprzątać
 
     (
         set +e
@@ -213,9 +238,7 @@ else
     SUDOERS_TMP="$(mktemp)"
     echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"
     if sudo visudo -cf "$SUDOERS_TMP" &>/dev/null; then
-        sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
-        echo "%wheel ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"
-        sudo visudo -cf "$SUDOERS_TMP" &>/dev/null && sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99_nopasswd || true
+        sudo install -m 0440 -o root -g root "$SUDOERS_TMP" "$TEMP_SUDOERS"
     else
         rm -f "$SUDOERS_TMP"
         if [[ "$SCRIPT_LANG" == "pl" ]]; then
@@ -226,7 +249,7 @@ else
         exit 1
     fi
     rm -f "$SUDOERS_TMP"
-    SUDO_READY=1
+    SUDOERS_TMP=""
 fi
 
 printf '\033[?7l' >&3
@@ -288,6 +311,14 @@ retry_cmd() {
     done
 }
 
+# Arch nie wspiera częściowych upgrade'ów: najpierw pełna synchronizacja, dopiero potem instalacje.
+wait_for_pacman_lock
+if ! sudo pacman -Syu --noconfirm; then
+    log_err "pacman -Syu nie powiódł się - przerywam, żeby uniknąć częściowego upgrade'u." \
+            "pacman -Syu failed - aborting to avoid a partial upgrade."
+    exit 1
+fi
+
 install_pacman_pkgs dconf pciutils curl
 
 GPU_TYPE="unknown"
@@ -301,9 +332,9 @@ GPU_UNKNOWN_PKGS=(
 if command -v lspci &>/dev/null; then
     GPU_INFO=$(lspci | grep -i -E "vga|3d|display" || true)
 
-    echo "$GPU_INFO" | grep -qi "nvidia"      && GPU_VENDORS+=("nvidia")
-    echo "$GPU_INFO" | grep -qi -E "\b(amd|ati)\b|advanced micro devices|radeon" && GPU_VENDORS+=("amd")
-    echo "$GPU_INFO" | grep -qi "intel"       && GPU_VENDORS+=("intel")
+    grep -qi "nvidia" <<< "$GPU_INFO" && GPU_VENDORS+=("nvidia")
+    grep -qi -E "\b(amd|ati)\b|advanced micro devices|radeon" <<< "$GPU_INFO" && GPU_VENDORS+=("amd")
+    grep -qi "intel" <<< "$GPU_INFO" && GPU_VENDORS+=("intel")
 
     TOTAL_KNOWN=${#GPU_VENDORS[@]}
 
@@ -351,10 +382,29 @@ kwalletmanager elisa dragon transmission-gtk exaile mpv juk yelp
 totem pragha transmission-qt discover 
 )
 wait_for_pacman_lock
-INSTALLED_PACKAGES=$(pacman -Qq "${TO_REMOVE[@]}" 2>/dev/null || true)
-for pkg in $INSTALLED_PACKAGES; do
-    sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
-done
+readarray -t INSTALLED_PACKAGES < <(pacman -Qq "${TO_REMOVE[@]}" 2>/dev/null || true)
+if [ "${#INSTALLED_PACKAGES[@]}" -gt 0 ]; then
+    # Jedna transakcja: pakiety zależne od siebie (np. akonadi <-> kmail) schodzą razem
+    if ! sudo pacman -Rs --noconfirm "${INSTALLED_PACKAGES[@]}"; then
+        # Fallback: jeśli całość odpadła (np. jeden pakiet wymagany przez meta-pakiet),
+        # usuwaj pojedynczo, aż żaden kolejny już nie zejdzie
+        removed_any=1
+        while [ "$removed_any" -eq 1 ]; do
+            removed_any=0
+            for pkg in "${INSTALLED_PACKAGES[@]}"; do
+                pkg_installed "$pkg" || continue
+                sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null && removed_any=1
+            done
+        done
+        STILL_INSTALLED=()
+        for pkg in "${INSTALLED_PACKAGES[@]}"; do
+            pkg_installed "$pkg" && STILL_INSTALLED+=("$pkg")
+        done
+        if [ "${#STILL_INSTALLED[@]}" -gt 0 ]; then
+            log_quiet "Nie udało się usunąć: ${STILL_INSTALLED[*]}" "Could not remove: ${STILL_INSTALLED[*]}"
+        fi
+    fi
+fi
 
 if pacman -Qq plasma-desktop &>/dev/null || pacman -Qq plasma-workspace &>/dev/null; then
     mkdir -p ~/.config
@@ -405,10 +455,12 @@ sudo mkdir -p /etc/NetworkManager/conf.d
 echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
 echo -e "[global-dns]\n\n[global-dns-domain-*]\nservers=1.1.1.2,1.0.0.2,2606:4700:4700::1112,2606:4700:4700::1002" | sudo tee /etc/NetworkManager/conf.d/global-dns.conf > /dev/null
 
-ACTIVE_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep -v "^lo" | head -n 1 | cut -d: -f1 || true)
+sudo nmcli general reload 2>/dev/null || sudo systemctl reload NetworkManager 2>/dev/null || true
+ACTIVE_CONN="$(nmcli -t -f UUID,DEVICE connection show --active 2>/dev/null \
+    | awk -F: '$2 != "" && $2 != "lo" && $2 !~ /^(virbr|docker|br-|veth|tun|tap)/ {print $1; exit}' || true)"
 if [[ -n "$ACTIVE_CONN" ]]; then
-    sudo nmcli connection modify "$ACTIVE_CONN" ipv4.dns "1.1.1.2,1.0.0.2" ipv6.dns "2606:4700:4700::1112,2606:4700:4700::1002"
-    sudo nmcli connection up "$ACTIVE_CONN" || true
+    sudo nmcli connection modify uuid "$ACTIVE_CONN" ipv4.dns "1.1.1.2,1.0.0.2" ipv6.dns "2606:4700:4700::1112,2606:4700:4700::1002" || true
+    sudo nmcli connection up uuid "$ACTIVE_CONN" || true
 fi
 
 show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
@@ -417,9 +469,6 @@ show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
 #  ETAP 2/4: INSTALACJA
 # =============================================================
 show_progress 4 $TOTAL_STEPS "$MSG_PHASE_2"
-
-wait_for_pacman_lock
-sudo pacman -Syu --noconfirm || true
 
 show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
 
@@ -873,22 +922,33 @@ sudo virsh net-autostart default 2>/dev/null || true
 
 if command -v ufw &>/dev/null; then
     [[ -f /etc/default/ufw ]] && sudo sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw || true
-    sudo ufw --force reset || true
-    sudo ufw default deny incoming || true
-    sudo ufw default allow outgoing || true
+    UFW_STATUS="$(sudo ufw status 2>/dev/null || true)"
+    UFW_WAS_ACTIVE=0
+    grep -qi '^Status: active' <<< "$UFW_STATUS" && UFW_WAS_ACTIVE=1
+    # Domyślne polityki ustawiamy tylko przy świeżym firewallu; istniejących reguł nie kasujemy
+    if [[ "$UFW_WAS_ACTIVE" -eq 0 ]]; then
+        sudo ufw default deny incoming || true
+        sudo ufw default allow outgoing || true
+    fi
     sudo ufw allow in  on virbr0 || true
     sudo ufw allow out on virbr0 || true
     sudo ufw allow from "$LIBVIRT_NET" || true
     if pkg_installed openssh || [[ -x /usr/bin/sshd ]] || [[ -x /usr/sbin/sshd ]] \
         || systemctl is-active --quiet sshd 2>/dev/null; then
-        sudo ufw allow ssh || true
+        SSH_PORT="$(sudo sshd -T 2>/dev/null | awk '/^port /{print $2; exit}' || true)"
+        [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || SSH_PORT=22
+        sudo ufw allow "${SSH_PORT}/tcp" || true
     fi
-    sudo ufw --force enable || true
+    if [[ "$UFW_WAS_ACTIVE" -eq 1 ]]; then
+        sudo ufw reload || true
+    else
+        sudo ufw --force enable || true
+    fi
     sudo systemctl enable --now ufw || true
 fi
 
 if command -v dconf &>/dev/null; then
-    dconf load /org/virt-manager/virt-manager/ <<'EOF'
+    dconf load /org/virt-manager/virt-manager/ <<'EOF' || true
 [/]
 manager-window-height=297
 manager-window-width=478
@@ -926,7 +986,8 @@ EOF
 fi
 
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
-sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStartSec=.*/DefaultTimeoutStartSec=3s/' /etc/systemd/system.conf
+# Przywróć domyślny start timeout, jeśli poprzednia wersja skryptu ustawiła 3s
+sudo sed -i 's/^DefaultTimeoutStartSec=3s$/#DefaultTimeoutStartSec=90s/' /etc/systemd/system.conf || true
 sudo systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 sudo journalctl --vacuum-time=2d || true
 
@@ -955,7 +1016,7 @@ if command -v zsh &>/dev/null; then
         SHELL_LOCALE="${LANG:-${LC_ALL:-${LC_MESSAGES:-en_US.UTF-8}}}"
         if command -v locale &>/dev/null; then
             AVAILABLE_LOCALES="$(locale -a 2>/dev/null)"
-            if ! echo "$AVAILABLE_LOCALES" | grep -qiF "$SHELL_LOCALE" && ! echo "$AVAILABLE_LOCALES" | grep -qiF "$(echo "$SHELL_LOCALE" | sed 's/UTF-8/utf8/')"; then
+            if ! grep -qiF "$SHELL_LOCALE" <<< "$AVAILABLE_LOCALES" && ! grep -qiF "${SHELL_LOCALE//UTF-8/utf8}" <<< "$AVAILABLE_LOCALES"; then
                 SHELL_LOCALE="en_US.UTF-8"
             fi
         fi
