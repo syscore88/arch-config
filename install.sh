@@ -28,6 +28,7 @@ LOG_FILE="$HOME/install_error_$(date +%Y%m%d_%H%M%S).log"
 FAILED_PACKAGES=()
 SUDOERS_TMP=""
 LIBVIRT_NET_XML=""
+YAY_TMP=""
 SUDO_READY=0
 SUDO_KEEPALIVE_PID=""
 QUIET_WARNS=0
@@ -47,6 +48,7 @@ cleanup_on_exit() {
     declare -F restore_packagekit >/dev/null && restore_packagekit
 
     rm -f "$SUDOERS_TMP" "$LIBVIRT_NET_XML"
+    rm -rf "$YAY_TMP"
 
     {
         printf '\033[?7h'
@@ -496,11 +498,17 @@ PKGS_CODECS=(
 
 for vendor in "${GPU_VENDORS[@]}"; do
     case "$vendor" in
-        "nvidia") SYSTEM_PKGS+=(libva-nvidia-driver lib32-nvidia-utils opencl-nvidia mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
+        "nvidia") SYSTEM_PKGS+=(dkms nvidia-open-dkms nvidia-utils nvidia-settings libva-nvidia-driver lib32-nvidia-utils opencl-nvidia mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
         "amd")    SYSTEM_PKGS+=(mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils vulkan-icd-loader lib32-vulkan-icd-loader opencl-mesa vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
         "intel")  SYSTEM_PKGS+=(intel-media-driver mesa lib32-mesa vulkan-intel lib32-vulkan-intel lib32-vulkan-mesa-layers lib32-mesa-utils vulkan-icd-loader lib32-vulkan-icd-loader intel-compute-runtime vulkan-dzn vulkan-gfxstream vulkan-swrast lib32-vulkan-swrast) ;;
     esac
 done
+
+if [[ " ${GPU_VENDORS[*]} " == *" nvidia "* ]]; then
+    for kern in linux linux-lts linux-zen linux-hardened; do
+        pkg_installed "$kern" && SYSTEM_PKGS+=("${kern}-headers")
+    done
+fi
 
 if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
     readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
@@ -542,24 +550,25 @@ show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 if ! command -v yay &>/dev/null; then
     sudo timedatectl set-ntp true &>/dev/null || true
 
-    rm -rf /tmp/yay
+    YAY_TMP="$(mktemp -d /tmp/yay.XXXXXX)"
     YAY_SRC_OK=1
-    if ! retry_cmd 5 git clone https://aur.archlinux.org/yay.git /tmp/yay; then
-        rm -rf /tmp/yay
-        mkdir -p /tmp/yay
+    if ! retry_cmd 5 git clone https://aur.archlinux.org/yay.git "$YAY_TMP/yay"; then
+        rm -rf "$YAY_TMP/yay"
+        mkdir -p "$YAY_TMP/yay"
         if retry_cmd 5 curl -4 -fsSL \
             "https://aur.archlinux.org/cgit/aur.git/snapshot/yay.tar.gz" \
-            -o /tmp/yay.tar.gz; then
-            tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1 || YAY_SRC_OK=0
+            -o "$YAY_TMP/yay.tar.gz"; then
+            tar -xzf "$YAY_TMP/yay.tar.gz" -C "$YAY_TMP/yay" --strip-components=1 || YAY_SRC_OK=0
         else
             YAY_SRC_OK=0
         fi
-        rm -f /tmp/yay.tar.gz
+        rm -f "$YAY_TMP/yay.tar.gz"
     fi
     if [ "$YAY_SRC_OK" -eq 1 ]; then
-        (cd /tmp/yay && makepkg -si --noconfirm) || true
+        (cd "$YAY_TMP/yay" && makepkg -si --noconfirm) || true
     fi
-    rm -rf /tmp/yay
+    rm -rf "$YAY_TMP"
+    YAY_TMP=""
 fi
 command -v yay &>/dev/null || FAILED_PACKAGES+=("yay")
 
