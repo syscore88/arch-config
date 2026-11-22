@@ -28,8 +28,11 @@ LOG_FILE="$HOME/install_error_$(date +%Y%m%d_%H%M%S).log"
 FAILED_PACKAGES=()
 SUDOERS_TMP=""
 LIBVIRT_NET_XML=""
+LIBVIRT_NET_BAK=""
+LIBVIRT_NET_RESTORE=0
 YAY_TMP=""
 SUDO_READY=0
+USE_RUN0=0
 SUDO_KEEPALIVE_PID=""
 QUIET_WARNS=0
 RUN0_NOPASSWD_FILE="/etc/polkit-1/rules.d/51-run0-nopasswd.rules"
@@ -37,6 +40,14 @@ TEMP_SUDOERS="/etc/sudoers.d/99-temp-installer"
 
 exec 3>&1
 exec >>"$TMP_LOG" 2>&1
+
+_sudo_n() {
+    if [ "${USE_RUN0:-0}" -eq 1 ]; then
+        sudo "$@"
+    else
+        sudo -n "$@"
+    fi
+}
 
 cleanup_on_exit() {
     local exit_code=$?
@@ -47,25 +58,32 @@ cleanup_on_exit() {
     [ -n "${SUDO_KEEPALIVE_PID:-}" ] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
     declare -F restore_packagekit >/dev/null && restore_packagekit
 
-    rm -f "$SUDOERS_TMP" "$LIBVIRT_NET_XML"
+    if [ "${SUDO_READY:-0}" = "1" ] && [ "${LIBVIRT_NET_RESTORE:-0}" = "1" ] && [ -s "${LIBVIRT_NET_BAK:-}" ]; then
+        _sudo_n virsh net-define "$LIBVIRT_NET_BAK" &>/dev/null
+        _sudo_n virsh net-start default &>/dev/null
+        _sudo_n virsh net-autostart default &>/dev/null
+    fi
+
+    rm -f "$SUDOERS_TMP" "$LIBVIRT_NET_XML" "$LIBVIRT_NET_BAK"
     rm -rf "$YAY_TMP"
+
+    if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ] || [ "${QUIET_WARNS:-0}" -gt 0 ]; then
+        cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null
+    else
+        rm -f "$LOG_FILE"
+    fi
 
     {
         printf '\033[?7h'
         if [ "$exit_code" -ne 0 ] || [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
             echo -e "\n"
-            cp -f "$TMP_LOG" "$LOG_FILE"
-            if [ "$exit_code" -ne 0 ]; then
-                if [[ "$SCRIPT_LANG" == "pl" ]]; then
-                    echo -e "${ERR}[X] Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}"
-                else
-                    echo -e "${ERR}[X] An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}"
-                fi
+        fi
+        if [ "$exit_code" -ne 0 ]; then
+            if [[ "$SCRIPT_LANG" == "pl" ]]; then
+                echo -e "${ERR}[X] Wystąpił błąd (kod: $exit_code). Szczegółowy log zapisano w: $LOG_FILE${NC}"
+            else
+                echo -e "${ERR}[X] An error occurred (code: $exit_code). Detailed log saved to: $LOG_FILE${NC}"
             fi
-        elif [ "${QUIET_WARNS:-0}" -eq 0 ]; then
-            rm -f "$LOG_FILE"
-        else
-            cp -f "$TMP_LOG" "$LOG_FILE"
         fi
     } >&3 2>/dev/null
     rm -f "$TMP_LOG"
@@ -73,7 +91,7 @@ cleanup_on_exit() {
     local do_reboot=0
     [ "$exit_code" -eq 0 ] && [ "${DO_REBOOT:-0}" = "1" ] && do_reboot=1
     if [ "${SUDO_READY:-0}" = "1" ]; then
-        sudo sh -c 'rm -f "$1" "$2"; systemctl try-restart polkit 2>/dev/null; if [ "$3" = 1 ]; then systemctl reboot; fi' _ \
+        _sudo_n sh -c 'rm -f "$1" "$2"; systemctl try-restart polkit 2>/dev/null; if [ "$3" = 1 ]; then systemctl reboot; fi' _ \
             "$RUN0_NOPASSWD_FILE" "$TEMP_SUDOERS" "$do_reboot"
     fi
 }
@@ -83,7 +101,7 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 
 _pick_msg() { [[ "$SCRIPT_LANG" == "pl" ]] && echo "$1" || echo "$2"; }
-_log_write() { printf "\r\033[K" >&3; echo -e "$1" >&3; echo -e "$1"; cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true; }
+_log_write() { printf "\r\033[K" >&3 2>/dev/null || true; echo -e "$1" >&3 2>/dev/null || true; echo -e "$1"; cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true; }
 log_info()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${INFO}==> $m${NC}"; }
 log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${SUCCESS}[OK] $m${NC}"; }
 log_err()   { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${ERR}[X] ERROR: $m${NC}"; }
@@ -112,7 +130,7 @@ disable_packagekit() {
 
 restore_packagekit() {
     [[ "${PACKAGEKIT_MASKED:-0}" -eq 1 ]] || return 0
-    sudo systemctl unmask "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
+    _sudo_n systemctl unmask "${PACKAGEKIT_UNITS[@]}" 2>/dev/null || true
     PACKAGEKIT_MASKED=0
 }
 
@@ -173,7 +191,7 @@ show_progress() {
     if [ $filled -gt 0 ]; then printf -v bar_filled '%*s' "$filled" ''; bar_filled="${bar_filled// /#}"; fi
     if [ $empty -gt 0 ]; then printf -v bar_empty '%*s' "$empty" ''; bar_empty="${bar_empty// /-}"; fi
 
-    printf "\r\033[K[\033[1;32m%s\033[0;90m%s\033[0m] %3d%% | \033[1;36m%s\033[0m" "$bar_filled" "$bar_empty" "$percent" "$msg" >&3
+    printf "\r\033[K[\033[1;32m%s\033[0;90m%s\033[0m] %3d%% | \033[1;36m%s\033[0m" "$bar_filled" "$bar_empty" "$percent" "$msg" >&3 2>/dev/null || true
 }
 
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
@@ -192,9 +210,9 @@ TOTAL_STEPS=12
 
 if [[ "$EUID" -eq 0 ]]; then
     if [[ "$SCRIPT_LANG" == "pl" ]]; then
-        echo -e "${ERR}[X] Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3
+        echo -e "${ERR}[X] Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3 2>/dev/null || true
     else
-        echo -e "${ERR}[X] Do not run this script as root. Run as a normal user with sudo.${NC}" >&3
+        echo -e "${ERR}[X] Do not run this script as root. Run as a normal user with sudo.${NC}" >&3 2>/dev/null || true
     fi
     exit 1
 fi
@@ -202,7 +220,7 @@ fi
 CURRENT_USER=$(whoami)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-printf '\033[?7h\n' >&3
+printf '\033[?7h\n' >&3 2>/dev/null || true
 
 USE_RUN0=0
 SUDO_VERSION_OUT="$(sudo --version 2>/dev/null || true)"
@@ -211,15 +229,13 @@ if ! command -v visudo >/dev/null 2>&1 || grep -qi "run0" <<< "$SUDO_VERSION_OUT
 fi
 
 if [[ "$USE_RUN0" -eq 1 ]]; then
-    SUDO_READY=1
-    sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null << EOF
-polkit.addRule(function(action, subject) {
-    if (subject.user == "$CURRENT_USER") {
-        return polkit.Result.YES;
-    }
-});
-EOF
-    sudo systemctl try-restart polkit 2>/dev/null || true
+    if printf 'polkit.addRule(function(action, subject) {\n    if (subject.user == "%s") {\n        return polkit.Result.YES;\n    }\n});\n' "$CURRENT_USER" | sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null; then
+        SUDO_READY=1
+        sudo systemctl try-restart polkit 2>/dev/null || true
+    else
+        log_err "Nie udało się uzyskać uprawnień administratora." "Failed to obtain administrator privileges."
+        exit 1
+    fi
 else
     sudo -v
     SUDO_READY=1
@@ -242,9 +258,9 @@ else
     else
         rm -f "$SUDOERS_TMP"
         if [[ "$SCRIPT_LANG" == "pl" ]]; then
-            echo -e "${ERR}[X] Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
+            echo -e "${ERR}[X] Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3 2>/dev/null || true
         else
-            echo -e "${ERR}[X] Invalid sudoers rule syntax - aborting.${NC}" >&3
+            echo -e "${ERR}[X] Invalid sudoers rule syntax - aborting.${NC}" >&3 2>/dev/null || true
         fi
         exit 1
     fi
@@ -252,7 +268,7 @@ else
     SUDOERS_TMP=""
 fi
 
-printf '\033[?7l' >&3
+printf '\033[?7l' >&3 2>/dev/null || true
 
 # =============================================================
 #  ETAP 1/4: PRZYGOTOWYWANIE
@@ -343,7 +359,7 @@ if command -v lspci &>/dev/null; then
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
         GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
-        log_info "Wykryto hybrydowy układ graficzny (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE" "Detected a hybrid GPU setup (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE"
+        _pick_msg "Wykryto hybrydowy układ graficzny (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE" "Detected a hybrid GPU setup (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE"
     else
         HYBRID_GPU=false
         GPU_TYPE="${GPU_VENDORS[0]}"
@@ -381,6 +397,24 @@ kwalletmanager elisa dragon transmission-gtk exaile mpv juk yelp
 totem pragha transmission-qt discover 
 )
 wait_for_pacman_lock
+TO_REMOVE_RE="^($(IFS='|'; echo "${TO_REMOVE[*]}"))\$"
+for meta in plasma-meta kde-applications-meta kde-pim-meta kde-multimedia-meta kde-network-meta gnome-extra; do
+    pkg_installed "$meta" || continue
+    mapfile -t META_DEPS < <(
+        pacman -Qi "$meta" 2>/dev/null \
+        | awk -F' : ' '/^Depends On/{print $2}' \
+        | tr ' ' '\n' \
+        | sed -E 's/[<>=].*//' \
+        | grep -v '^None$' \
+        | grep -Ev "$TO_REMOVE_RE" \
+        | sort -u || true
+    )
+    if [[ ${#META_DEPS[@]} -gt 0 ]]; then
+        readarray -t INSTALLED_META_DEPS < <(pacman -Qq "${META_DEPS[@]}" 2>/dev/null || true)
+        [[ ${#INSTALLED_META_DEPS[@]} -gt 0 ]] && sudo pacman -D --asexplicit "${INSTALLED_META_DEPS[@]}" >/dev/null 2>&1 || true
+    fi
+    sudo pacman -R --noconfirm "$meta" 2>/dev/null || true
+done
 readarray -t INSTALLED_PACKAGES < <(pacman -Qq "${TO_REMOVE[@]}" 2>/dev/null || true)
 if [ "${#INSTALLED_PACKAGES[@]}" -gt 0 ]; then
     if ! sudo pacman -Rs --noconfirm "${INSTALLED_PACKAGES[@]}"; then
@@ -422,28 +456,30 @@ Use One Wallet=true
 apiEnabled=false
 EOF
 fi
+rm -rf ~/.local/share/akonadi ~/.local/share/kmail2 ~/.local/share/local-mail ~/.local/share/contacts ~/.local/share/korganizer ~/.local/share/akregator ~/.local/share/kontact ~/.local/share/konqueror
 rm -rf ~/.config/akonadi* ~/.config/kmail* ~/.config/kontact* ~/.config/korganizer* ~/.config/kaddressbook* ~/.config/akregator* ~/.config/emailidentities ~/.config/mailtransports
 rm -rf ~/.cache/akonadi* ~/.cache/kmail* ~/.cache/kontact* ~/.cache/korganizer* ~/.cache/kaddressbook* ~/.cache/akregator* ~/.cache/konqueror*
 rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,evolution,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv,juk}
 rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,evolution,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv,juk}
 rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,evolution,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,yelp,dragonplayer,elisa,cosmic-store,cosmic-player,pragha,transmission,totem,exaile,mpv,juk}
+command -v dconf &>/dev/null && dconf reset -f /org/gnome/evolution/ || true
 
 show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
 
-sudo sed -i 's/^#[[:space:]]*Color/Color/' /etc/pacman.conf
+sudo sed -i 's/^#[[:space:]]*Color/Color/' /etc/pacman.conf || true
 if ! grep -qw "ILoveCandy" /etc/pacman.conf; then
-    sudo sed -i '/^Color/a ILoveCandy' /etc/pacman.conf
+    sudo sed -i '/^Color/a ILoveCandy' /etc/pacman.conf || true
 fi
-sudo sed -i 's/^[[:space:]]*CheckSpace/#CheckSpace/' /etc/pacman.conf
-sudo sed -i 's/^#[[:space:]]*ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
-sudo sed -i 's/^ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
-sudo sed -i 's/^#[[:space:]]*VerbosePkgLists/VerbosePkgLists/' /etc/pacman.conf
+sudo sed -i 's/^[[:space:]]*CheckSpace/#CheckSpace/' /etc/pacman.conf || true
+sudo sed -i 's/^#[[:space:]]*ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf || true
+sudo sed -i 's/^ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf || true
+sudo sed -i 's/^#[[:space:]]*VerbosePkgLists/VerbosePkgLists/' /etc/pacman.conf || true
 
 if ! grep -q "NoExtract = usr/share/locale" /etc/pacman.conf; then
-    sudo sed -i '/^\[options\]/a NoExtract = usr/share/locale/* !usr/share/locale/pl* !usr/share/locale/en*\nNoExtract = usr/share/cups/doc/*' /etc/pacman.conf
+    sudo sed -i '/^\[options\]/a NoExtract = usr/share/locale/* !usr/share/locale/pl* !usr/share/locale/en*\nNoExtract = usr/share/cups/doc/*' /etc/pacman.conf || true
 fi
 if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
-    sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf
+    sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf || true
 fi
 install_pacman_pkgs cups
 
@@ -472,7 +508,7 @@ SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
     gcc clang llvm make cmake meson ninja just firefox firefox-i18n-pl    
     python-pip python-tqdm python-defusedxml python-packaging
-    partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
+    partitionmanager bleachbit unrar mc btrfs-progs exfatprogs ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex libayatana-appindicator flatpak timeshift
@@ -510,7 +546,7 @@ if [[ " ${GPU_VENDORS[*]} " == *" nvidia "* ]]; then
     done
 fi
 
-if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
+if [ "${#SYSTEM_PKGS[@]}" -gt 0 ]; then
     readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
 fi
 
@@ -527,7 +563,7 @@ for f in /etc/xdg/autostart/gcdemu.desktop /etc/xdg/autostart/cdemu.desktop /usr
     if [[ -f "$f" ]]; then
         cp -f "$f" "$HOME/.config/autostart/$(basename "$f")"
         if grep -q '^Hidden=' "$HOME/.config/autostart/$(basename "$f")"; then
-            sed -i 's/^Hidden=.*/Hidden=true/' "$HOME/.config/autostart/$(basename "$f")"
+            sed -i 's/^Hidden=.*/Hidden=true/' "$HOME/.config/autostart/$(basename "$f")" || true
         else
             echo "Hidden=true" >> "$HOME/.config/autostart/$(basename "$f")"
         fi
@@ -623,8 +659,8 @@ if [ -f /etc/kernel/cmdline ] && \
      [ "$UKI_EFI_FOUND" = true ]; }; then
     BOOT_METHODS_FOUND+=("uki")
     if ! sgrep -qw "splash" /etc/kernel/cmdline; then
-        sudo sed -i "s/\$/ $CMDLINE/" /etc/kernel/cmdline
-        sudo sed -i 's/  */ /g'       /etc/kernel/cmdline
+        sudo sed -i "s/\$/ $CMDLINE/" /etc/kernel/cmdline || true
+        sudo sed -i 's/  */ /g'       /etc/kernel/cmdline || true
     fi
 fi
 
@@ -638,18 +674,18 @@ if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
         if broot_d "$loader_root/loader/entries"; then
             if broot_f "$loader_root/loader/loader.conf"; then
                 if sgrep -q '^timeout ' "$loader_root/loader/loader.conf"; then
-                    sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
+                    sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf" || true
                 else
                     echo "timeout 0" | sudo tee -a "$loader_root/loader/loader.conf" >/dev/null
                 fi
             fi
 
-            for entry in $(sudo find "$loader_root/loader/entries" -maxdepth 1 -iname '*.conf' 2>/dev/null); do
+            while IFS= read -r -d '' entry; do
                 if ! sgrep -qw "splash" "$entry"; then
-                    sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry"
-                    sudo sed -i 's/  */ /g' "$entry"
+                    sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry" || true
+                    sudo sed -i 's/  */ /g' "$entry" || true
                 fi
-            done
+            done < <(sudo find "$loader_root/loader/entries" -maxdepth 1 -iname '*.conf' -print0 2>/dev/null)
         fi
     done
     sudo bootctl set-timeout 0 &>/dev/null || true
@@ -657,10 +693,24 @@ fi
 
 if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     BOOT_METHODS_FOUND+=("grub")
-    sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
-    if ! sgrep -q '^GRUB_CMDLINE_LINUX_DEFAULT=.*\bsplash\b' /etc/default/grub; then
-        sudo sed -i "/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/\"\$/ $CMDLINE\"/" /etc/default/grub
-        sudo sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ { s/="[[:space:]]*/="/; s/[[:space:]]\{2,\}/ /g }' /etc/default/grub
+    if sgrep -q '^#\?GRUB_TIMEOUT=' /etc/default/grub; then
+        sudo sed -i 's/^#\?GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub || true
+    else
+        echo 'GRUB_TIMEOUT=0' | sudo tee -a /etc/default/grub >/dev/null || true
+    fi
+    GRUB_CMDLINE_CURRENT="$(awk -F= '/^GRUB_CMDLINE_LINUX_DEFAULT=/{v=substr($0, index($0,"=")+1); gsub(/^["\047]|["\047]$/, "", v); last=v} END{print last}' /etc/default/grub 2>/dev/null || true)"
+    GRUB_CMDLINE_NEW="$GRUB_CMDLINE_CURRENT"
+    for arg in $CMDLINE; do
+        if [[ " $GRUB_CMDLINE_NEW " != *" $arg "* ]]; then
+            GRUB_CMDLINE_NEW="${GRUB_CMDLINE_NEW:+$GRUB_CMDLINE_NEW }${arg}"
+        fi
+    done
+    if sgrep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
+        if [[ "$GRUB_CMDLINE_NEW" != "$GRUB_CMDLINE_CURRENT" ]]; then
+            sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"${GRUB_CMDLINE_NEW}\"|" /etc/default/grub || true
+        fi
+    else
+        echo "GRUB_CMDLINE_LINUX_DEFAULT=\"${GRUB_CMDLINE_NEW}\"" | sudo tee -a /etc/default/grub >/dev/null || true
     fi
     sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
 fi
@@ -678,20 +728,20 @@ patch_one_limine_conf() {
     broot_f "$f" || return 0
     if [[ "$f" == *.conf ]]; then
         if sgrep -qiE '^timeout:' "$f"; then
-            sudo sed -i -E 's/^timeout:.*/timeout: 0/I' "$f"
+            sudo sed -i -E 's/^timeout:.*/timeout: 0/I' "$f" || true
         else
-            sudo sed -i '1i timeout: 0' "$f"
+            sudo sed -i '1i timeout: 0' "$f" || true
         fi
-        sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$f"
+        sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$f" || true
     else
         if sgrep -qiE '^timeout=' "$f"; then
-            sudo sed -i -E 's/^timeout=.*/TIMEOUT=0/I' "$f"
+            sudo sed -i -E 's/^timeout=.*/TIMEOUT=0/I' "$f" || true
         else
-            sudo sed -i '1i TIMEOUT=0' "$f"
+            sudo sed -i '1i TIMEOUT=0' "$f" || true
         fi
-        sudo sed -i -E "/^[[:space:]]*CMDLINE=/{/splash/!s/\$/ $CMDLINE/}" "$f"
+        sudo sed -i -E "/^[[:space:]]*CMDLINE=/{/splash/!s/\$/ $CMDLINE/}" "$f" || true
     fi
-    sudo sed -i 's/[[:space:]]\{2,\}/ /g' "$f"
+    sudo sed -i 's/[[:space:]]\{2,\}/ /g' "$f" || true
 }
 
 patch_limine_conf() {
@@ -726,7 +776,7 @@ if [ -n "$REFIND_CONF" ]; then
     done
     if [ -n "$REFIND_MAIN_CONF" ]; then
         if sgrep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
-            sudo sed -i -E 's/^timeout[[:space:]].*/timeout -1/' "$REFIND_MAIN_CONF"
+            sudo sed -i -E 's/^timeout[[:space:]].*/timeout -1/' "$REFIND_MAIN_CONF" || true
         else
             echo "timeout -1" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
         fi
@@ -735,7 +785,7 @@ if [ -n "$REFIND_CONF" ]; then
     for rl_conf in /boot/refind_linux.conf /efi/refind_linux.conf \
                    /boot/EFI/Linux/refind_linux.conf /efi/EFI/Linux/refind_linux.conf; do
         broot_f "$rl_conf" || continue
-        sudo sed -i -E "/splash/! s/^([[:space:]]*\"[^\"]*\"[[:space:]]+\")([^\"]*)\"[[:space:]]*\$/\\1\\2 ${CMDLINE}\"/" "$rl_conf"
+        sudo sed -i -E "/splash/! s/^([[:space:]]*\"[^\"]*\"[[:space:]]+\")([^\"]*)\"[[:space:]]*\$/\\1\\2 ${CMDLINE}\"/" "$rl_conf" || true
     done
 fi
 
@@ -776,9 +826,10 @@ if command -v efibootmgr &>/dev/null; then
                         loader_path_bs="$(sed 's#/#\\#g' <<<"$loader_path")"
                         new_cmdline="$(sed 's/[[:space:]]*$//' <<<"$cmdline_data") $CMDLINE"
                         new_cmdline="$(sed 's/  */ /g' <<<"$new_cmdline")"
-                        sudo efibootmgr -b "$boot_num" -B &>/dev/null || true
-                        sudo efibootmgr -c -d "$disk_dev" -p "$part_num" \
-                            -L "$label" -l "$loader_path_bs" -u "$new_cmdline" &>/dev/null || true
+                        if sudo efibootmgr -c -d "$disk_dev" -p "$part_num" \
+                            -L "$label" -l "$loader_path_bs" -u "$new_cmdline" &>/dev/null; then
+                            sudo efibootmgr -b "$boot_num" -B &>/dev/null || true
+                        fi
                     fi
                 fi
             fi
@@ -800,15 +851,15 @@ sudo plymouth-set-default-theme -R bgrt 2>/dev/null || true
 
 if [[ $GPU_TYPE == *"nvidia"* ]]; then
     grep -q "nvidia_drm" /etc/mkinitcpio.conf || \
-        sudo sed -i 's/^MODULES=(/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm /' /etc/mkinitcpio.conf
+        sudo sed -i 's/^MODULES=(/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm /' /etc/mkinitcpio.conf || true
 fi
 if [[ $GPU_TYPE == *"amd"* ]]; then
     grep -q "amdgpu" /etc/mkinitcpio.conf || \
-        sudo sed -i 's/^MODULES=(/MODULES=(amdgpu /' /etc/mkinitcpio.conf
+        sudo sed -i 's/^MODULES=(/MODULES=(amdgpu /' /etc/mkinitcpio.conf || true
 fi
 if [[ $GPU_TYPE == *"intel"* ]]; then
     grep -q "^MODULES=([^)]*i915" /etc/mkinitcpio.conf || \
-        sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf
+        sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf || true
 fi
 
 PLYMOUTHD_CONF="/etc/plymouth/plymouthd.conf"
@@ -816,19 +867,19 @@ PLYMOUTHD_CONF="/etc/plymouth/plymouthd.conf"
 grep -q '^\[Daemon\]' "$PLYMOUTHD_CONF" || sudo sed -i '1i [Daemon]' "$PLYMOUTHD_CONF"
 
 if grep -q '^Theme=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF"
+    sudo sed -i 's/^Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF" || true
 elif grep -q '^#Theme=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^#Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF"
+    sudo sed -i 's/^#Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF" || true
 else
-    sudo sed -i '/^\[Daemon\]/a Theme=bgrt' "$PLYMOUTHD_CONF"
+    sudo sed -i '/^\[Daemon\]/a Theme=bgrt' "$PLYMOUTHD_CONF" || true
 fi
 
 if grep -q '^ShowDelay=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF"
+    sudo sed -i 's/^ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF" || true
 elif grep -q '^#ShowDelay=' "$PLYMOUTHD_CONF"; then
-    sudo sed -i 's/^#ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF"
+    sudo sed -i 's/^#ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF" || true
 else
-    sudo sed -i '/^\[Daemon\]/a ShowDelay=0' "$PLYMOUTHD_CONF"
+    sudo sed -i '/^\[Daemon\]/a ShowDelay=0' "$PLYMOUTHD_CONF" || true
 fi
 
 for preset in /etc/mkinitcpio.d/*.preset; do
@@ -838,14 +889,14 @@ done
 if ! grep -qE '^HOOKS=.*(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|\))' /etc/mkinitcpio.conf; then
     if grep -qE '^HOOKS=.*(^|[[:space:]])kms([[:space:]]|\))' /etc/mkinitcpio.conf; then
         if grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
-            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms sd-plymouth/' /etc/mkinitcpio.conf
+            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms sd-plymouth/' /etc/mkinitcpio.conf || true
         else
-            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms plymouth/' /etc/mkinitcpio.conf
+            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms plymouth/' /etc/mkinitcpio.conf || true
         fi
     elif grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
-        sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd kms sd-plymouth/' /etc/mkinitcpio.conf
+        sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd kms sd-plymouth/' /etc/mkinitcpio.conf || true
     else
-        sudo sed -i '/^HOOKS=/ s/\budev\b/udev kms plymouth/' /etc/mkinitcpio.conf
+        sudo sed -i '/^HOOKS=/ s/\budev\b/udev kms plymouth/' /etc/mkinitcpio.conf || true
     fi
 fi
 
@@ -864,7 +915,7 @@ fix_uki_collisions() {
                 suffix=""
                 [[ "$uki_key" == "fallback_uki" ]] && suffix="-fallback"
                 new_path="$(dirname "$uki_path")/arch-${kname}${suffix}.efi"
-                sudo sed -i "s#^${uki_key}=.*#${uki_key}=\"${new_path}\"#" "$preset"
+                sudo sed -i "s#^${uki_key}=.*#${uki_key}=\"${new_path}\"#" "$preset" || true
                 seen_uki["$new_path"]="$kname"
             else
                 seen_uki["$uki_path"]="$kname"
@@ -908,13 +959,19 @@ fi
 
 if [[ "$LIBVIRT_NET" == "192.168.150.0/24" ]]; then
     LIBVIRT_NET_XML="$(mktemp)"
+    LIBVIRT_NET_BAK="$(mktemp)"
     if sudo virsh net-dumpxml default --inactive 2>/dev/null > "$LIBVIRT_NET_XML" && grep -q '192\.168\.122\.' "$LIBVIRT_NET_XML"; then
-        sed -i 's/192\.168\.122\./192.168.150./g' "$LIBVIRT_NET_XML"
+        cp -f "$LIBVIRT_NET_XML" "$LIBVIRT_NET_BAK"
+        sed -i 's/192\.168\.122\./192.168.150./g' "$LIBVIRT_NET_XML" || true
+        LIBVIRT_NET_RESTORE=1
         sudo virsh net-destroy default 2>/dev/null || true
         sudo virsh net-undefine default 2>/dev/null || true
-        sudo virsh net-define "$LIBVIRT_NET_XML" || true
+        if ! sudo virsh net-define "$LIBVIRT_NET_XML"; then
+            sudo virsh net-define "$LIBVIRT_NET_BAK" || true
+        fi
+        LIBVIRT_NET_RESTORE=0
     fi
-    rm -f "$LIBVIRT_NET_XML"
+    rm -f "$LIBVIRT_NET_XML" "$LIBVIRT_NET_BAK"
 fi
 
 sudo virsh net-start default 2>/dev/null || true
@@ -984,8 +1041,11 @@ network-traffic=false
 EOF
 fi
 
-sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
-sudo sed -i 's/^DefaultTimeoutStartSec=3s$/#DefaultTimeoutStartSec=90s/' /etc/systemd/system.conf || true
+sudo mkdir -p /etc/systemd/system.conf.d
+printf '[Manager]\nDefaultTimeoutStopSec=3s\n' | sudo tee /etc/systemd/system.conf.d/10-timeouts.conf >/dev/null || true
+if [ -f /etc/systemd/system.conf ]; then
+    sudo sed -i 's/^DefaultTimeoutStartSec=3s$/#DefaultTimeoutStartSec=90s/' /etc/systemd/system.conf 2>/dev/null || true
+fi
 sudo systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 sudo journalctl --vacuum-time=2d || true
 
@@ -1008,12 +1068,12 @@ if command -v zsh &>/dev/null; then
     fi
 
     if [ -f ~/.zshrc ]; then
-        sed -i 's|^ZSH_THEME=.*|ZSH_THEME="powerlevel10k/powerlevel10k"|' ~/.zshrc
-        sed -i 's/^plugins=(.*/plugins=(git sudo systemd archlinux)/' ~/.zshrc
+        sed -i 's|^ZSH_THEME=.*|ZSH_THEME="powerlevel10k/powerlevel10k"|' ~/.zshrc || true
+        sed -i 's/^plugins=(.*/plugins=(git sudo systemd archlinux)/' ~/.zshrc || true
 
-        SHELL_LOCALE="${LANG:-${LC_ALL:-${LC_MESSAGES:-en_US.UTF-8}}}"
+        SHELL_LOCALE="${LC_ALL:-${LC_MESSAGES:-${LANG:-en_US.UTF-8}}}"
         if command -v locale &>/dev/null; then
-            AVAILABLE_LOCALES="$(locale -a 2>/dev/null)"
+            AVAILABLE_LOCALES="$(locale -a 2>/dev/null || true)"
             if ! grep -qiF "$SHELL_LOCALE" <<< "$AVAILABLE_LOCALES" && ! grep -qiF "${SHELL_LOCALE//UTF-8/utf8}" <<< "$AVAILABLE_LOCALES"; then
                 SHELL_LOCALE="en_US.UTF-8"
             fi
@@ -1042,16 +1102,16 @@ fi
 #  ETAP 4/4: CZYSZCZENIE
 # =============================================================
 show_progress 12 $TOTAL_STEPS "$MSG_PHASE_4"
-printf '\n\n' >&3
+printf '\n\n' >&3 2>/dev/null || true
 
 if [ "${#FAILED_PACKAGES[@]}" -gt 0 ]; then
     log_warn "Nie udało się zainstalować: ${FAILED_PACKAGES[*]}" "Failed to install: ${FAILED_PACKAGES[*]}"
 fi
 
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
-    echo -e "${SUCCESS}[OK] KONFIGURACJA ZAKOŃCZONA SUKCESEM!${NC}" >&3
+    echo -e "${SUCCESS}[OK] KONFIGURACJA ZAKOŃCZONA SUKCESEM!${NC}" >&3 2>/dev/null || true
 else
-    echo -e "${SUCCESS}[OK] CONFIGURATION COMPLETED SUCCESSFULLY!${NC}" >&3
+    echo -e "${SUCCESS}[OK] CONFIGURATION COMPLETED SUCCESSFULLY!${NC}" >&3 2>/dev/null || true
 fi
 
 # =============================================================
@@ -1062,7 +1122,7 @@ if [[ "$SCRIPT_LANG" == "pl" ]]; then
 else
     RESTART_PROMPT="Do you want to restart the system now? [Y/N]: "
 fi
-echo -en "${INFO}==> ${RESTART_PROMPT}${NC}" >&3
+echo -en "${INFO}==> ${RESTART_PROMPT}${NC}" >&3 2>/dev/null || true
 RESTART_CHOICE=""
 read -r RESTART_CHOICE < /dev/tty || true
 case "$RESTART_CHOICE" in
