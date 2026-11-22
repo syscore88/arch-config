@@ -25,7 +25,6 @@ NC='\033[0m'
 TMP_LOG="$(mktemp /tmp/install-log.XXXXXX)"
 LOG_FILE="$HOME/install_error_$(date +%Y%m%d_%H%M%S).log"
 
-# Stan używany przez trap EXIT - musi istnieć PRZED jego instalacją (set -u)
 FAILED_PACKAGES=()
 SUDOERS_TMP=""
 LIBVIRT_NET_XML=""
@@ -40,9 +39,9 @@ exec >>"$TMP_LOG" 2>&1
 
 cleanup_on_exit() {
     local exit_code=$?
-    trap '' INT TERM HUP     # sprzątania nikt nie przerwie
+    trap '' INT TERM HUP
     trap - ERR
-    set +e                   # każdy krok wykona się mimo błędu poprzedniego
+    set +e
 
     [ -n "${SUDO_KEEPALIVE_PID:-}" ] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
     declare -F restore_packagekit >/dev/null && restore_packagekit
@@ -62,11 +61,11 @@ cleanup_on_exit() {
                 fi
             fi
         elif [ "${QUIET_WARNS:-0}" -eq 0 ]; then
-            rm -f "$LOG_FILE"    # czysty przebieg - nie zostawiaj logu "error"
+            rm -f "$LOG_FILE"
         else
-            cp -f "$TMP_LOG" "$LOG_FILE"   # ciche ostrzeżenia: zachowaj log, bez komunikatu w terminalu
+            cp -f "$TMP_LOG" "$LOG_FILE"
         fi
-    } >&3 2>/dev/null          # martwy terminal (SIGHUP) nie może przerwać sprzątania
+    } >&3 2>/dev/null
     rm -f "$TMP_LOG"
 
     local do_reboot=0
@@ -87,7 +86,6 @@ log_info()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${INFO}==> $m${NC
 log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${SUCCESS}[OK] $m${NC}"; }
 log_err()   { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${ERR}[X] ERROR: $m${NC}"; }
 log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; _log_write "${WARN}[!] WARN: $m${NC}"; }
-# Ostrzeżenie tylko do logu - bez wypisywania w terminalu (nie psuje paska postępu)
 log_quiet() { local m; m="$(_pick_msg "$1" "$2")"; QUIET_WARNS=$((QUIET_WARNS + 1)); echo "[!] WARN: $m"; cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true; }
 
 trap 'log_err "Błąd w linii $LINENO. Polecenie: $BASH_COMMAND" "Error at line $LINENO. Command: $BASH_COMMAND"' ERR
@@ -211,7 +209,7 @@ if ! command -v visudo >/dev/null 2>&1 || grep -qi "run0" <<< "$SUDO_VERSION_OUT
 fi
 
 if [[ "$USE_RUN0" -eq 1 ]]; then
-    SUDO_READY=1   # od teraz cleanup ma co sprzątać
+    SUDO_READY=1
     sudo tee "$RUN0_NOPASSWD_FILE" > /dev/null << EOF
 polkit.addRule(function(action, subject) {
     if (subject.user == "$CURRENT_USER") {
@@ -222,7 +220,7 @@ EOF
     sudo systemctl try-restart polkit 2>/dev/null || true
 else
     sudo -v
-    SUDO_READY=1   # od teraz cleanup ma co sprzątać
+    SUDO_READY=1
 
     (
         set +e
@@ -311,7 +309,6 @@ retry_cmd() {
     done
 }
 
-# Arch nie wspiera częściowych upgrade'ów: najpierw pełna synchronizacja, dopiero potem instalacje.
 wait_for_pacman_lock
 if ! sudo pacman -Syu --noconfirm; then
     log_err "pacman -Syu nie powiódł się - przerywam, żeby uniknąć częściowego upgrade'u." \
@@ -384,10 +381,7 @@ totem pragha transmission-qt discover
 wait_for_pacman_lock
 readarray -t INSTALLED_PACKAGES < <(pacman -Qq "${TO_REMOVE[@]}" 2>/dev/null || true)
 if [ "${#INSTALLED_PACKAGES[@]}" -gt 0 ]; then
-    # Jedna transakcja: pakiety zależne od siebie (np. akonadi <-> kmail) schodzą razem
     if ! sudo pacman -Rs --noconfirm "${INSTALLED_PACKAGES[@]}"; then
-        # Fallback: jeśli całość odpadła (np. jeden pakiet wymagany przez meta-pakiet),
-        # usuwaj pojedynczo, aż żaden kolejny już nie zejdzie
         removed_any=1
         while [ "$removed_any" -eq 1 ]; do
             removed_any=0
@@ -662,7 +656,6 @@ if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
 fi
 
-# --- Limine ---
 declare -a LIMINE_CONFS=()
 for candidate in /boot/limine.conf /efi/limine.conf \
                   /boot/EFI/Limine/limine.conf /efi/EFI/Limine/limine.conf \
@@ -710,7 +703,6 @@ if [ ${#LIMINE_CONFS[@]} -gt 0 ]; then
     patch_limine_conf
 fi
 
-# --- rEFInd ---
 REFIND_CONF=""
 for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf \
                  /boot/refind_linux.conf /efi/refind_linux.conf; do
@@ -738,7 +730,6 @@ if [ -n "$REFIND_CONF" ]; then
     done
 fi
 
-# --- EFISTUB ---
 EFISTUB_FOUND=false
 if command -v efibootmgr &>/dev/null; then
     re_boot_line='^Boot([0-9A-Fa-f]{4})\*?[[:space:]]*(.*)$'
@@ -925,7 +916,6 @@ if command -v ufw &>/dev/null; then
     UFW_STATUS="$(sudo ufw status 2>/dev/null || true)"
     UFW_WAS_ACTIVE=0
     grep -qi '^Status: active' <<< "$UFW_STATUS" && UFW_WAS_ACTIVE=1
-    # Domyślne polityki ustawiamy tylko przy świeżym firewallu; istniejących reguł nie kasujemy
     if [[ "$UFW_WAS_ACTIVE" -eq 0 ]]; then
         sudo ufw default deny incoming || true
         sudo ufw default allow outgoing || true
@@ -986,7 +976,6 @@ EOF
 fi
 
 sudo sed -i 's/^#\?[[:space:]]*DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=3s/' /etc/systemd/system.conf
-# Przywróć domyślny start timeout, jeśli poprzednia wersja skryptu ustawiła 3s
 sudo sed -i 's/^DefaultTimeoutStartSec=3s$/#DefaultTimeoutStartSec=90s/' /etc/systemd/system.conf || true
 sudo systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
 sudo journalctl --vacuum-time=2d || true
