@@ -510,7 +510,7 @@ SYSTEM_PKGS=(
     python-pip python-tqdm python-defusedxml python-packaging
     partitionmanager bleachbit unrar mc btrfs-progs exfatprogs ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
-    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
+    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi zram-generator
     bluez-obex libayatana-appindicator flatpak timeshift
     zsh-syntax-highlighting zsh-autosuggestions ghostwriter
     vlc vlc-plugins-all libappimage handbrake 
@@ -946,6 +946,25 @@ sudo systemctl enable --now ananicy-cpp || true
 sudo systemctl enable --now fstrim.timer || true
 sudo systemctl enable --now bluetooth || true
 echo "options btusb enable_autosuspend=0" | sudo tee /etc/modprobe.d/btusb.conf > /dev/null
+
+sudo mkdir -p /etc/systemd /etc/sysctl.d
+sudo tee /etc/systemd/zram-generator.conf >/dev/null <<'ZRAMEOF'
+[zram0]
+zram-size = min(ram / 2, 8192)
+compression-algorithm = zstd
+swap-priority = 100
+fs-type = swap
+ZRAMEOF
+sudo tee /etc/sysctl.d/99-zram.conf >/dev/null <<'SYSEOF'
+vm.swappiness = 180
+vm.watermark_boost_factor = 0
+vm.watermark_scale_factor = 125
+vm.page-cluster = 0
+SYSEOF
+sudo sysctl --system >/dev/null 2>&1 || true
+sudo systemctl daemon-reload || true
+sudo systemctl start /dev/zram0 2>/dev/null || sudo systemctl restart systemd-zram-setup@zram0.service 2>/dev/null || true
+
 sudo systemctl enable --now libvirtd || true
 
 LIBVIRT_NET="192.168.122.0/24"
