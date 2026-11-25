@@ -514,7 +514,7 @@ SYSTEM_PKGS=(
     bluez-obex libayatana-appindicator flatpak timeshift
     zsh-syntax-highlighting zsh-autosuggestions ghostwriter
     vlc vlc-plugins-all libappimage handbrake 
-    gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module
+    gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module-dkms
     audacity qmmp mixxx kdenlive soundconverter
     discord telegram-desktop qbittorrent
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl krita
@@ -540,11 +540,25 @@ for vendor in "${GPU_VENDORS[@]}"; do
     esac
 done
 
-if [[ " ${GPU_VENDORS[*]} " == *" nvidia "* ]]; then
-    for kern in linux linux-lts linux-zen linux-hardened; do
-        pkg_installed "$kern" && SYSTEM_PKGS+=("${kern}-headers")
-    done
-fi
+KERNEL_HEADERS_PKGS=(dkms)
+KERNEL_HEADERS_AUR=()
+for pkgbase_file in /usr/lib/modules/*/pkgbase; do
+    [[ -f "$pkgbase_file" ]] || continue
+    kern="$(tr -d '[:space:]' < "$pkgbase_file")"
+    [[ -n "$kern" ]] || continue
+    pkg_installed "$kern" || continue
+    if pacman -Si "${kern}-headers" &>/dev/null; then
+        KERNEL_HEADERS_PKGS+=("${kern}-headers")
+    else
+        KERNEL_HEADERS_AUR+=("${kern}-headers")
+    fi
+done
+for kern in linux linux-lts linux-zen linux-hardened; do
+    if pkg_installed "$kern" && pacman -Si "${kern}-headers" &>/dev/null; then
+        KERNEL_HEADERS_PKGS+=("${kern}-headers")
+    fi
+done
+SYSTEM_PKGS=("${KERNEL_HEADERS_PKGS[@]}" "${SYSTEM_PKGS[@]}")
 
 if [ "${#SYSTEM_PKGS[@]}" -gt 0 ]; then
     readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
@@ -611,6 +625,10 @@ command -v yay &>/dev/null || FAILED_PACKAGES+=("yay")
 yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false || true
 
 AUR_PKGS=(ventoy-bin google-chrome brave-origin-bin faugus-launcher-bin opencode-desktop-bin shelly-flatpak-backend-bin dmemcg-booster needrestart makeself lsfg-vk-bin)
+if [ "${#KERNEL_HEADERS_AUR[@]}" -gt 0 ]; then
+    readarray -t KERNEL_HEADERS_AUR < <(printf '%s\n' "${KERNEL_HEADERS_AUR[@]}" | awk '!seen[$0]++')
+    AUR_PKGS+=("${KERNEL_HEADERS_AUR[@]}")
+fi
 install_yay_pkgs "${AUR_PKGS[@]}"
 
 show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
