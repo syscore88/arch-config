@@ -529,7 +529,7 @@ if ! command -v paru &>/dev/null; then
 fi
 
 if command -v paru &>/dev/null; then
-    AUR_PKGS=(google-chrome needrestart makeself)
+    AUR_PKGS=(google-chrome makeself)
     install_aur_pkgs "${AUR_PKGS[@]}"
 else
     FAILED_PACKAGES+=("paru")
