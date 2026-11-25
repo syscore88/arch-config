@@ -456,7 +456,7 @@ show_progress 4 $TOTAL_STEPS "$MSG_PHASE_2"
 SYSTEM_PKGS=(
     clang llvm cmake meson ninja just firefox firefox-i18n-pl
     python-pip python-tqdm python-defusedxml python-packaging
-    partitionmanager bleachbit unrar mc
+    partitionmanager bleachbit unrar mc xorg-xhost
     fsarchiver pv zenity innoextract android-tools dnsmasq vde2
     profile-sync-daemon dconf-editor geoclue fwupd fwupd-efi
     bluez-obex libayatana-appindicator flatpak timeshift
