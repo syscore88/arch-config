@@ -460,8 +460,8 @@ SYSTEM_PKGS=(
     fsarchiver pv zenity innoextract android-tools dnsmasq vde2
     profile-sync-daemon dconf-editor geoclue fwupd fwupd-efi
     bluez-obex libayatana-appindicator flatpak timeshift
-    faugus-launcher-bin opencode-desktop dmemcg-booster
-    ghostwriter ventoy-bin brave-origin-bin lsfg-vk-bin
+    faugus-launcher opencode-desktop dmemcg-booster
+    ghostwriter ventoy-bin brave-origin-bin lsfg-vk
     vlc vlc-plugins-all libappimage handbrake
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon dkms vhba-module-dkms
     audacity qmmp mixxx kdenlive soundconverter
