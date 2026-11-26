@@ -318,7 +318,39 @@ if ! sudo pacman -Syu --noconfirm; then
     exit 1
 fi
 
-install_pacman_pkgs dconf
+install_pacman_pkgs dconf pciutils
+
+GPU_TYPE="unknown"
+HYBRID_GPU=false
+GPU_VENDORS=()
+GPU_UNKNOWN_PKGS=(
+    lib32-mesa lib32-vulkan-mesa-layers
+    lib32-vulkan-icd-loader lib32-opencl-mesa
+    lib32-vulkan-swrast
+)
+if command -v lspci &>/dev/null; then
+    GPU_INFO=$(lspci | grep -i -E "vga|3d|display" || true)
+
+    grep -qi "nvidia" <<< "$GPU_INFO" && GPU_VENDORS+=("nvidia")
+    grep -qi -E "\b(amd|ati)\b|advanced micro devices|radeon" <<< "$GPU_INFO" && GPU_VENDORS+=("amd")
+    grep -qi "intel" <<< "$GPU_INFO" && GPU_VENDORS+=("intel")
+
+    TOTAL_KNOWN=${#GPU_VENDORS[@]}
+
+    if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
+        HYBRID_GPU=false
+        install_pacman_pkgs "${GPU_UNKNOWN_PKGS[@]}"
+    elif [ "$TOTAL_KNOWN" -ge 2 ]; then
+        HYBRID_GPU=true
+        GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
+        _pick_msg "Wykryto hybrydowy układ graficzny (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE" "Detected a hybrid GPU setup (HYBRID_GPU=$HYBRID_GPU): $GPU_TYPE"
+    else
+        HYBRID_GPU=false
+        GPU_TYPE="${GPU_VENDORS[0]}"
+    fi
+else
+    install_pacman_pkgs "${GPU_UNKNOWN_PKGS[@]}"
+fi
 
 if [ -f "$SCRIPT_DIR/.update.sh" ]; then
     cp -af "$SCRIPT_DIR/.update.sh" ~/.update.sh
@@ -487,8 +519,20 @@ PKGS_CODECS=(
     gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav ffmpeg x264
 )
 
+for vendor in "${GPU_VENDORS[@]}"; do
+    case "$vendor" in
+        "nvidia") PKGS_32BIT+=(lib32-nvidia-utils lib32-mesa lib32-vulkan-icd-loader lib32-vulkan-swrast) ;;
+        "amd")    PKGS_32BIT+=(lib32-mesa lib32-vulkan-radeon lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader lib32-vulkan-swrast) ;;
+        "intel")  PKGS_32BIT+=(lib32-mesa lib32-vulkan-intel lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader lib32-vulkan-swrast) ;;
+    esac
+done
+
 if [ "${#SYSTEM_PKGS[@]}" -gt 0 ]; then
     readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
+fi
+
+if [ "${#PKGS_32BIT[@]}" -gt 0 ]; then
+    readarray -t PKGS_32BIT < <(printf '%s\n' "${PKGS_32BIT[@]}" | awk '!seen[$0]++')
 fi
 
 install_pacman_pkgs "${SYSTEM_PKGS[@]}"
