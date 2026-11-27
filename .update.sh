@@ -295,7 +295,7 @@ STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 # ---------------------------------------------------------------
 # PHASE: USER CLEANUP (NO SUDO)
 # ---------------------------------------------------------------
-rm -rf ~/.cache/yay/* </dev/null 3>&- 2>/dev/null
+rm -rf ~/.cache/yay/* ~/.cache/paru/* </dev/null 3>&- 2>/dev/null
 STEP=$((STEP+1)); show_progress $STEP $TOTAL_STEPS "$MSG_PHASE_CLEAN_SYS"
 
 if command -v flatpak &> /dev/null; then
