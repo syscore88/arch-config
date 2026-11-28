@@ -515,7 +515,7 @@ SYSTEM_PKGS=(
     zsh-syntax-highlighting zsh-autosuggestions ghostwriter
     vlc vlc-plugins-all libappimage handbrake xorg-xhost
     gimp gmic gimp-plugin-gmic cdemu-client cdemu-daemon vhba-module-dkms
-    audacity qmmp mixxx kdenlive soundconverter
+    audacity audacious mixxx kdenlive soundconverter
     discord telegram-desktop qbittorrent
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl krita
     wine-staging winetricks gamemode gamescope mangohud vkd3d
